@@ -1,0 +1,14 @@
+node_modules
+.next
+out
+.env
+.env.local
+.env.*.local
+.vercel
+*.log
+.DS_Store
+service-account.json
+
+# Local dev data
+.data/
+public/uploads/

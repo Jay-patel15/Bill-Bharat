@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "functions": {
+    "app/api/ai/parse-pdf/route.js": { "maxDuration": 60 },
+    "app/api/upload/route.js": { "maxDuration": 30 },
+    "app/api/sales/[id]/pdf/route.js": { "maxDuration": 30 }
+  }
+}

@@ -1,0 +1,217 @@
+"use client";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, FileDown, Eye, Plus } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Field, Input, Select, Textarea } from "@/components/ui/input";
+import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
+import { Badge, StatusBadge } from "@/components/ui/badge";
+import { api, useCompany } from "@/components/company-context";
+import { useToast } from "@/components/ui/toast";
+import { formatINR, formatDate, STATES, DOCUMENT_TYPES } from "@/lib/utils";
+
+export default function CustomerDetailPage({ params }) {
+  const router = useRouter();
+  const toast = useToast();
+  const { active } = useCompany();
+  const [customer, setCustomer] = useState(null);
+  const [sales, setSales] = useState([]);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState("all");
+
+  async function load() {
+    try {
+      const c = await api(`/api/customers/${params.id}`);
+      setCustomer(c);
+      const all = await api("/api/sales");
+      setSales(all.filter((s) => s.customerId === params.id));
+    } catch (e) {
+      toast({ type: "error", title: "Could not load", message: e.message });
+      router.replace("/customers");
+    }
+  }
+  useEffect(() => { if (active?.id) load(); }, [params.id, active?.id]);
+
+  const filtered = useMemo(() => sales.filter((s) => {
+    if (typeFilter !== "all" && (s.documentType || "Tax Invoice") !== typeFilter) return false;
+    return [s.invoiceNumber, s.status, s.documentType].some((f) => (f || "").toLowerCase().includes(search.toLowerCase()));
+  }), [sales, search, typeFilter]);
+
+  const stats = useMemo(() => {
+    const taxInvoices = sales.filter((s) => (s.documentType || "Tax Invoice") === "Tax Invoice");
+    const billed = taxInvoices.reduce((t, s) => t + Number(s.total || 0), 0);
+    const paid = taxInvoices.reduce((t, s) => t + Number(s.amountPaid || 0), 0);
+    return {
+      totalDocs: sales.length,
+      billed,
+      paid,
+      outstanding: Math.max(0, billed - paid)
+    };
+  }, [sales]);
+
+  if (!customer) return <div className="text-sm text-muted-foreground">Loading…</div>;
+
+  async function saveEdits(e) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await api(`/api/customers/${params.id}`, { method: "PUT", body: JSON.stringify(customer) });
+      toast({ type: "success", title: "Saved" });
+      setEditing(false);
+      await load();
+    } catch (e) { toast({ type: "error", title: "Save failed", message: e.message }); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <Link href="/customers"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
+          <div>
+            <h1 className="text-2xl font-semibold">{customer.name}</h1>
+            <p className="text-sm text-muted-foreground">{customer.gstNumber || "No GSTIN"} · {customer.phone || customer.email || ""}</p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setEditing((s) => !s)}>{editing ? "Cancel" : "Edit"}</Button>
+          <Link href={`/sales/create-invoice?customer=${customer.id}`}>
+            <Button><Plus className="h-4 w-4" /> New invoice</Button>
+          </Link>
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-4">
+        <Stat label="Documents" value={stats.totalDocs} />
+        <Stat label="Total billed" value={formatINR(stats.billed)} />
+        <Stat label="Collected" value={formatINR(stats.paid)} accent="text-emerald-600" />
+        <Stat label="Outstanding" value={formatINR(customer.outstanding || stats.outstanding)} accent="text-amber-600" />
+      </div>
+
+      {editing ? (
+        <Card>
+          <CardHeader><CardTitle>Edit customer</CardTitle></CardHeader>
+          <CardContent>
+            <form onSubmit={saveEdits} className="grid gap-4 md:grid-cols-2">
+              <Field label="Name *"><Input required value={customer.name} onChange={(e) => setCustomer({ ...customer, name: e.target.value })} /></Field>
+              <Field label="Phone"><Input value={customer.phone || ""} onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} /></Field>
+              <Field label="Email"><Input type="email" value={customer.email || ""} onChange={(e) => setCustomer({ ...customer, email: e.target.value })} /></Field>
+              <Field label="GSTIN">
+                <Input value={customer.gstNumber || ""} onChange={(e) => {
+                  const v = e.target.value.toUpperCase();
+                  setCustomer({ ...customer, gstNumber: v, stateCode: v.length >= 2 ? v.substring(0, 2) : customer.stateCode });
+                }} />
+              </Field>
+              <Field label="State">
+                <Select value={customer.stateCode || ""} onChange={(e) => {
+                  const code = e.target.value;
+                  const s = STATES.find(([c]) => c === code);
+                  setCustomer({ ...customer, stateCode: code, state: s ? s[1] : "" });
+                }}>
+                  <option value="">—</option>
+                  {STATES.map(([code, name]) => <option key={code} value={code}>{code} — {name}</option>)}
+                </Select>
+              </Field>
+              <Field label="Credit limit (₹)">
+                <Input type="number" min={0} value={customer.creditLimit || 0} onChange={(e) => setCustomer({ ...customer, creditLimit: Number(e.target.value) })} />
+              </Field>
+              <div className="md:col-span-2">
+                <Field label="Address">
+                  <Textarea rows={2} value={customer.address || ""} onChange={(e) => setCustomer({ ...customer, address: e.target.value })} />
+                </Field>
+              </div>
+              <div className="md:col-span-2 flex justify-end">
+                <Button type="submit" disabled={saving}>{saving ? "Saving…" : "Save changes"}</Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card>
+            <CardHeader><CardTitle>Contact</CardTitle></CardHeader>
+            <CardContent className="space-y-1 text-sm">
+              <Row label="Phone" value={customer.phone || "—"} />
+              <Row label="Email" value={customer.email || "—"} />
+              <Row label="Address" value={customer.address || "—"} />
+              <Row label="State" value={`${customer.state || "—"}${customer.stateCode ? ` (${customer.stateCode})` : ""}`} />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader><CardTitle>Tax</CardTitle></CardHeader>
+            <CardContent className="space-y-1 text-sm">
+              <Row label="GSTIN" value={customer.gstNumber || "—"} />
+              <Row label="Credit limit" value={formatINR(customer.creditLimit || 0)} />
+              <Row label="Outstanding" value={formatINR(customer.outstanding || 0)} />
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      <Card>
+        <CardHeader className="flex-row items-center justify-between gap-3 flex-wrap">
+          <CardTitle>Bills & documents ({filtered.length})</CardTitle>
+          <div className="flex gap-2">
+            <Select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="max-w-[180px]">
+              <option value="all">All types</option>
+              {DOCUMENT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.value}</option>)}
+            </Select>
+            <Input placeholder="Search…" value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
+          </div>
+        </CardHeader>
+        <CardContent>
+          {filtered.length === 0 ? (
+            <div className="text-sm text-muted-foreground p-4">
+              No documents yet for this customer.{" "}
+              <Link href={`/sales/create-invoice?customer=${customer.id}`} className="text-primary underline">Create one →</Link>
+            </div>
+          ) : (
+            <Table>
+              <THead><TR>
+                <TH>Number</TH><TH>Type</TH><TH>Date</TH>
+                <TH className="text-right">Total</TH><TH className="text-right">Paid</TH>
+                <TH>Status</TH><TH />
+              </TR></THead>
+              <TBody>
+                {filtered.map((s) => (
+                  <TR key={s.id}>
+                    <TD className="font-medium">{s.invoiceNumber}</TD>
+                    <TD><Badge variant="outline">{s.documentType || "Tax Invoice"}</Badge></TD>
+                    <TD>{formatDate(s.invoiceDate)}</TD>
+                    <TD className="text-right font-semibold">{formatINR(s.total)}</TD>
+                    <TD className="text-right">{formatINR(s.amountPaid)}</TD>
+                    <TD><StatusBadge status={s.status} /></TD>
+                    <TD className="text-right space-x-1">
+                      <Link href={`/sales/${s.id}`}><Button size="sm" variant="outline"><Eye className="h-3.5 w-3.5" /></Button></Link>
+                      <a href={`/api/sales/${s.id}/pdf`} target="_blank" rel="noreferrer">
+                        <Button size="sm" variant="outline"><FileDown className="h-3.5 w-3.5" /></Button>
+                      </a>
+                    </TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function Stat({ label, value, accent }) {
+  return (
+    <Card>
+      <CardContent className="p-4">
+        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
+        <div className={`text-xl font-semibold mt-1 ${accent || ""}`}>{value}</div>
+      </CardContent>
+    </Card>
+  );
+}
+function Row({ label, value }) {
+  return <div className="flex justify-between"><span className="text-muted-foreground">{label}</span><span>{value}</span></div>;
+}
