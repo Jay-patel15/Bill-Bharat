@@ -8,7 +8,7 @@ export function CompanyForm({ initial = {}, submitLabel = "Save", onSubmit }) {
   const [form, setForm] = useState({
     name: "", logoUrl: "", address: "", city: "", state: "", stateCode: "",
     pincode: "", gstNumber: "", panNumber: "", bankAccountNo: "", bankIfsc: "",
-    bankName: "", termsAndConditions: "", phone: "", email: "",
+    bankName: "", bankBranch: "", termsAndConditions: "", phone: "", email: "",
     ...initial
   });
   const [submitting, setSubmitting] = useState(false);
@@ -84,6 +84,9 @@ export function CompanyForm({ initial = {}, submitLabel = "Save", onSubmit }) {
 
       <Field label="Bank Name">
         <Input value={form.bankName} onChange={(e) => set("bankName", e.target.value)} />
+      </Field>
+      <Field label="Bank Branch">
+        <Input value={form.bankBranch} onChange={(e) => set("bankBranch", e.target.value)} />
       </Field>
       <Field label="Account Number">
         <Input value={form.bankAccountNo} onChange={(e) => set("bankAccountNo", e.target.value)} />
