@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Plus, Sparkles, CreditCard, CheckCircle2, Clock, FileText } from "lucide-react";
+import { Plus, Sparkles, CreditCard, CheckCircle2, Clock, FileText, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -93,6 +93,22 @@ export default function PurchasesPage() {
   const pending  = selected ? Math.max(0, Number(selected.total || 0) - Number(selected.amountPaid || 0)) : 0;
   // A bill is truly closed only when pending amount is 0, not just when status says "Paid"
   const isClosed = pending <= 0 && Number(selected?.amountPaid || 0) > 0;
+
+  async function handleDelete() {
+    if (!selected) return;
+    if (!confirm(`Are you sure you want to delete purchase bill ${selected.billNumber || "No Number"}? This action cannot be undone.`)) return;
+    
+    setSaving(true);
+    try {
+      await api(`/api/purchases/${selected.id}`, { method: "DELETE" });
+      setList((prev) => prev.filter((p) => p.id !== selected.id));
+      setSelected(null);
+    } catch (e) {
+      alert(e.message || "Failed to delete purchase");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -195,15 +211,26 @@ export default function PurchasesPage() {
       >
         {selected && (
           <div className="space-y-5">
-            {/* Supplier meta */}
-            <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
-              {selected.supplierGst && (
-                <span><span className="text-muted-foreground">GSTIN: </span>{selected.supplierGst}</span>
-              )}
-              <span><span className="text-muted-foreground">Bill Date: </span>{formatDate(selected.billDate)}</span>
-              {selected.notes && (
-                <span><span className="text-muted-foreground">Notes: </span>{selected.notes}</span>
-              )}
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              {/* Supplier meta */}
+              <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm mt-1">
+                {selected.supplierGst && (
+                  <span><span className="text-muted-foreground">GSTIN: </span>{selected.supplierGst}</span>
+                )}
+                <span><span className="text-muted-foreground">Bill Date: </span>{formatDate(selected.billDate)}</span>
+                {selected.notes && (
+                  <span><span className="text-muted-foreground">Notes: </span>{selected.notes}</span>
+                )}
+              </div>
+              <Button 
+                variant="destructive" 
+                size="sm" 
+                onClick={handleDelete} 
+                disabled={saving}
+                className="opacity-80 hover:opacity-100"
+              >
+                <Trash2 className="h-4 w-4 mr-1" /> Delete Bill
+              </Button>
             </div>
 
             {/* Items */}
