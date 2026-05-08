@@ -19,6 +19,7 @@ export default function PurchasesPage() {
   const [selected, setSelected] = useState(null);
   const [payAmount, setPayAmount] = useState("");
   const [payMethod, setPayMethod] = useState("Cash");
+  const [editMode, setEditMode] = useState(false);   // true = override amountPaid, false = add to it
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -40,16 +41,34 @@ export default function PurchasesPage() {
     setSelected(p);
     setPayAmount("");
     setPayMethod("Cash");
+    setEditMode(false);
   }
 
   async function handlePayment(closeBill = false) {
     if (!selected) return;
-    const addAmount = Number(payAmount) || 0;
-    const newPaid   = Number(selected.amountPaid || 0) + addAmount;
-    const newTotal  = Number(selected.total || 0);
-    const newStatus = closeBill || newPaid >= newTotal
+    const inputAmount = Number(payAmount) || 0;
+    const newTotal    = Number(selected.total || 0);
+
+    // In edit mode we SET the amountPaid to the entered value.
+    // In normal mode we ADD to existing amountPaid.
+    const newPaid = editMode
+      ? inputAmount
+      : Number(selected.amountPaid || 0) + inputAmount;
+
+    // Validate: can't pay more than total
+    if (newPaid > newTotal && !closeBill) {
+      alert(`Amount paid (${formatINR(newPaid)}) cannot exceed bill total (${formatINR(newTotal)}).`);
+      return;
+    }
+
+    // Status: close bill = Paid, otherwise derive from actual amounts
+    const newStatus = closeBill
       ? "Paid"
-      : newPaid > 0 ? "Partially Paid" : "Unpaid";
+      : newPaid >= newTotal
+        ? "Paid"
+        : newPaid > 0
+          ? "Partially Paid"
+          : "Unpaid";
 
     setSaving(true);
     try {
@@ -60,6 +79,7 @@ export default function PurchasesPage() {
       setList((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
       setSelected(updated);
       setPayAmount("");
+      setEditMode(false);
     } catch (e) {
       alert(e.message || "Failed to save payment");
     } finally {
@@ -68,7 +88,8 @@ export default function PurchasesPage() {
   }
 
   const pending  = selected ? Math.max(0, Number(selected.total || 0) - Number(selected.amountPaid || 0)) : 0;
-  const isClosed = selected?.status === "Paid";
+  // A bill is truly closed only when pending amount is 0, not just when status says "Paid"
+  const isClosed = pending <= 0 && Number(selected?.amountPaid || 0) > 0;
 
   return (
     <div className="space-y-6">
@@ -225,18 +246,46 @@ export default function PurchasesPage() {
             </div>
 
             {/* Status + payment form */}
-            {!isClosed ? (
+            {!isClosed || editMode ? (
               <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
-                <p className="text-sm font-semibold flex items-center gap-2">
-                  <CreditCard className="h-4 w-4" /> Record Payment to Supplier
-                </p>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold flex items-center gap-2">
+                    <CreditCard className="h-4 w-4" />
+                    {editMode ? "Edit Total Paid Amount" : "Record Payment to Supplier"}
+                  </p>
+                  {/* Toggle between Add mode and Edit mode */}
+                  {!editMode ? (
+                    <button
+                      className="text-xs text-blue-600 underline hover:text-blue-800"
+                      onClick={() => { setEditMode(true); setPayAmount(String(selected.amountPaid || "")); }}
+                    >
+                      ✏️ Edit paid amount
+                    </button>
+                  ) : (
+                    <button
+                      className="text-xs text-muted-foreground underline"
+                      onClick={() => { setEditMode(false); setPayAmount(""); }}
+                    >
+                      Cancel edit
+                    </button>
+                  )}
+                </div>
+
+                {editMode && (
+                  <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded p-2">
+                    ⚠️ Edit mode: This will <strong>replace</strong> the current paid amount (not add to it). Use this to correct a wrong entry.
+                  </p>
+                )}
+
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">Amount Paying Now (₹)</label>
+                    <label className="text-xs text-muted-foreground mb-1 block">
+                      {editMode ? "Correct Total Paid Amount (₹)" : "Amount Paying Now (₹)"}
+                    </label>
                     <Input
                       type="number"
                       min="0"
-                      placeholder={`Max ${formatINR(pending)}`}
+                      placeholder={editMode ? `Currently ${formatINR(selected.amountPaid || 0)}` : `Max ${formatINR(pending)}`}
                       value={payAmount}
                       onChange={(e) => setPayAmount(e.target.value)}
                     />
@@ -255,28 +304,48 @@ export default function PurchasesPage() {
                   </div>
                 </div>
                 <div className="flex gap-2 pt-1">
-                  <Button
-                    onClick={() => handlePayment(false)}
-                    disabled={saving || !payAmount}
-                    className="flex-1"
-                  >
-                    {saving ? "Saving…" : "Record Partial Payment"}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => handlePayment(true)}
-                    disabled={saving}
-                    className="border-emerald-500 text-emerald-600 hover:bg-emerald-50"
-                  >
-                    <CheckCircle2 className="h-4 w-4 mr-1" />
-                    Close Bill (Mark Fully Paid)
-                  </Button>
+                  {editMode ? (
+                    <Button
+                      onClick={() => handlePayment(false)}
+                      disabled={saving || !payAmount}
+                      className="flex-1"
+                    >
+                      {saving ? "Saving…" : "Save Corrected Amount"}
+                    </Button>
+                  ) : (
+                    <>
+                      <Button
+                        onClick={() => handlePayment(false)}
+                        disabled={saving || !payAmount}
+                        className="flex-1"
+                      >
+                        {saving ? "Saving…" : "Record Payment"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => handlePayment(true)}
+                        disabled={saving}
+                        className="border-emerald-500 text-emerald-600 hover:bg-emerald-50"
+                      >
+                        <CheckCircle2 className="h-4 w-4 mr-1" />
+                        Close Bill (Mark Fully Paid)
+                      </Button>
+                    </>
+                  )}
                 </div>
               </div>
             ) : (
-              <div className="border border-emerald-300 rounded-lg p-4 bg-emerald-50 flex items-center gap-2 text-emerald-700">
-                <CheckCircle2 className="h-5 w-5" />
-                <span className="font-medium">This bill is fully paid and closed.</span>
+              <div className="border border-emerald-300 rounded-lg p-4 bg-emerald-50 flex items-center justify-between text-emerald-700">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5" />
+                  <span className="font-medium">This bill is fully paid and closed.</span>
+                </div>
+                <button
+                  className="text-xs text-blue-600 underline hover:text-blue-800"
+                  onClick={() => { setEditMode(true); setPayAmount(String(selected.amountPaid || "")); }}
+                >
+                  ✏️ Edit paid amount
+                </button>
               </div>
             )}
           </div>
