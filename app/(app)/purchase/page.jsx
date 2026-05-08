@@ -49,11 +49,14 @@ export default function PurchasesPage() {
     const inputAmount = Number(payAmount) || 0;
     const newTotal    = Number(selected.total || 0);
 
+    // If closing the bill, automatically set the paid amount to the full total.
     // In edit mode we SET the amountPaid to the entered value.
     // In normal mode we ADD to existing amountPaid.
-    const newPaid = editMode
-      ? inputAmount
-      : Number(selected.amountPaid || 0) + inputAmount;
+    const newPaid = closeBill
+      ? newTotal
+      : editMode
+        ? inputAmount
+        : Number(selected.amountPaid || 0) + inputAmount;
 
     // Validate: can't pay more than total
     if (newPaid > newTotal && !closeBill) {
