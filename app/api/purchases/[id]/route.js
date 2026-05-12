@@ -21,7 +21,7 @@ export async function PUT(req, { params }) {
     try {
       await loadPurchase(user, params.id);
       const body = await readBody(req);
-      const allowed = ["status", "amountPaid", "notes", "pdfUrl"];
+      const allowed = ["status", "amountPaid", "notes", "pdfUrl", "customerId"];
       const patch = {};
       for (const k of allowed) if (body[k] !== undefined) patch[k] = body[k];
       if (patch.amountPaid !== undefined) patch.amountPaid = Number(patch.amountPaid);

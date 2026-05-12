@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Building2, Users, Package, FileText, ShoppingCart,
-  BarChart3, Sparkles, LogOut, FolderKanban
+  BarChart3, Sparkles, LogOut, FolderKanban, Settings
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -16,7 +16,8 @@ const NAV = [
   { href: "/sales", label: "Sales / Invoices", icon: FileText },
   { href: "/purchase", label: "Purchases", icon: ShoppingCart },
   { href: "/purchase/ai-upload", label: "AI Purchase Reader", icon: Sparkles },
-  { href: "/reports", label: "Reports", icon: BarChart3 }
+  { href: "/reports", label: "Reports", icon: BarChart3 },
+  { href: "/settings", label: "Settings", icon: Settings }
 ];
 
 export function Sidebar({ onLogout }) {

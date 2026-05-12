@@ -60,7 +60,8 @@ export async function POST(req) {
         amountPaid: Number(body.amountPaid) || 0,
         status,
         notes: body.notes || "",
-        pdfUrl: body.pdfUrl || ""
+        pdfUrl: body.pdfUrl || "",
+        customerId: body.customerId || ""
       });
 
       // Increase inventory: match by sku else by name

@@ -21,16 +21,24 @@ export default function CustomersPage() {
   const { active } = useCompany();
   const toast = useToast();
   const [list, setList] = useState([]);
+  const [sales, setSales] = useState([]);
+  const [purchases, setPurchases] = useState([]);
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(empty);
   const [loading, setLoading] = useState(false);
 
   async function load() {
-    if (!active?.id) { setList([]); return; }
+    if (!active?.id) { setList([]); setSales([]); setPurchases([]); return; }
     try {
-      const data = await api("/api/customers");
-      setList(data || []);
+      const [customersData, salesData, purchasesData] = await Promise.all([
+        api("/api/customers").catch(() => []),
+        api("/api/sales").catch(() => []),
+        api("/api/purchases").catch(() => [])
+      ]);
+      setList(customersData || []);
+      setSales(salesData || []);
+      setPurchases(purchasesData || []);
     } catch {
       setList([]);
     }
@@ -76,55 +84,107 @@ export default function CustomersPage() {
     [c.name, c.email, c.phone, c.gstNumber].some((f) => (f || "").toLowerCase().includes(search.toLowerCase()))
   );
 
+  const totalGlobalBilled = sales.reduce((sum, s) => sum + Number(s.total || 0), 0);
+  const totalGlobalReceived = sales.reduce((sum, s) => sum + Number(s.amountPaid || 0), 0);
+  const totalGlobalInvested = purchases.reduce((sum, p) => sum + Number(p.total || 0), 0);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Customers</h1>
-          <p className="text-sm text-muted-foreground">Track parties, GST details and outstanding balances.</p>
+          <h1 className="text-2xl font-semibold">Customers & Builders Dashboard</h1>
+          <p className="text-sm text-muted-foreground">Track billing, payments, and investments per builder.</p>
         </div>
-        <Button onClick={() => { setForm(empty); setOpen(true); }}><Plus className="h-4 w-4" /> New customer</Button>
+        <Button onClick={() => { setForm(empty); setOpen(true); }}><Plus className="h-4 w-4 mr-1" /> New builder</Button>
       </div>
 
-      <Card>
-        <CardHeader className="flex-row items-center justify-between gap-3">
-          <CardTitle>All customers ({filtered.length})</CardTitle>
-          <Input placeholder="Search name, phone, GSTIN…" value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
-        </CardHeader>
-        <CardContent>
-          {filtered.length === 0 ? (
-            <div className="text-sm text-muted-foreground p-4">No customers found.</div>
-          ) : (
-            <Table>
-              <THead>
-                <TR>
-                  <TH>Name</TH><TH>Phone</TH><TH>Email</TH><TH>GSTIN</TH>
-                  <TH className="text-right">Outstanding</TH><TH /></TR>
-              </THead>
-              <TBody>
-                {filtered.map((c) => (
-                  <TR key={c.id}>
-                    <TD className="font-medium">
-                      <Link href={`/customers/${c.id}`} className="hover:underline">{c.name}</Link>
-                    </TD>
-                    <TD>{c.phone || "—"}</TD>
-                    <TD>{c.email || "—"}</TD>
-                    <TD>{c.gstNumber || "—"}</TD>
-                    <TD className="text-right">{formatINR(c.outstanding)}</TD>
-                    <TD className="text-right space-x-1">
-                      <Link href={`/customers/${c.id}`} title="View bills">
-                        <Button size="sm" variant="outline"><FileText className="h-3.5 w-3.5" /></Button>
+      {/* Global Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="bg-blue-50 border-blue-200">
+          <CardContent className="p-4">
+            <p className="text-xs text-blue-600 font-semibold mb-1 uppercase tracking-wider">Total Billed</p>
+            <p className="text-2xl font-bold text-blue-900">{formatINR(totalGlobalBilled)}</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-emerald-50 border-emerald-200">
+          <CardContent className="p-4">
+            <p className="text-xs text-emerald-600 font-semibold mb-1 uppercase tracking-wider">Amount Received</p>
+            <p className="text-2xl font-bold text-emerald-900">{formatINR(totalGlobalReceived)}</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-amber-50 border-amber-200">
+          <CardContent className="p-4">
+            <p className="text-xs text-amber-600 font-semibold mb-1 uppercase tracking-wider">Total Cost Invested</p>
+            <p className="text-2xl font-bold text-amber-900">{formatINR(totalGlobalInvested)}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+        <h2 className="text-lg font-semibold text-foreground/80">Individual Builders ({filtered.length})</h2>
+        <Input placeholder="Search name, phone, GSTIN…" value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs bg-background" />
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {filtered.length === 0 ? (
+          <div className="col-span-full text-sm text-muted-foreground p-8 text-center border border-dashed rounded-lg bg-card">
+            No customers found.
+          </div>
+        ) : (
+          filtered.map((c) => {
+            const customerSales = sales.filter(s => s.customerId === c.id);
+            const customerPurchases = purchases.filter(p => p.customerId === c.id);
+            
+            const billed = customerSales.reduce((sum, s) => sum + Number(s.total || 0), 0);
+            const received = customerSales.reduce((sum, s) => sum + Number(s.amountPaid || 0), 0);
+            const invested = customerPurchases.reduce((sum, p) => sum + Number(p.total || 0), 0);
+
+            return (
+              <Card key={c.id} className="flex flex-col hover:border-primary/50 transition-colors shadow-sm">
+                <CardHeader className="p-4 pb-3 border-b bg-muted/10">
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="min-w-0">
+                      <Link href={`/customers/${c.id}`} className="font-semibold text-base hover:underline decoration-primary underline-offset-4 truncate block">
+                        {c.name}
                       </Link>
-                      <Button size="sm" variant="outline" onClick={() => startEdit(c)}><Pencil className="h-3.5 w-3.5" /></Button>
-                      <Button size="sm" variant="destructive" onClick={() => onDelete(c)}><Trash2 className="h-3.5 w-3.5" /></Button>
-                    </TD>
-                  </TR>
-                ))}
-              </TBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+                      <div className="text-[11px] text-muted-foreground mt-1 space-y-0.5">
+                        {c.phone && <div className="truncate">📞 {c.phone}</div>}
+                        {c.gstNumber && <div className="truncate">📝 {c.gstNumber}</div>}
+                        {!c.phone && !c.gstNumber && <div className="italic">No contact info</div>}
+                      </div>
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <Button size="icon" variant="ghost" onClick={() => startEdit(c)} className="h-7 w-7"><Pencil className="h-3.5 w-3.5" /></Button>
+                      <Button size="icon" variant="ghost" onClick={() => onDelete(c)} className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" /></Button>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-4 flex-1 flex flex-col gap-3">
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-muted-foreground">Billed</span>
+                    <span className="font-medium text-foreground">{formatINR(billed)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-muted-foreground">Received</span>
+                    <span className="font-medium text-emerald-600">{formatINR(received)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-muted-foreground">Invested</span>
+                    <span className="font-medium text-amber-600">{formatINR(invested)}</span>
+                  </div>
+                  <div className="mt-auto pt-3">
+                    <Link href={`/customers/${c.id}`} className="w-full">
+                      <Button variant="outline" className="w-full h-8 text-xs bg-muted/30 hover:bg-muted/50">
+                        <FileText className="h-3.5 w-3.5 mr-1.5" /> View Ledger
+                      </Button>
+                    </Link>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })
+        )}
+      </div>
 
       <Dialog open={open} onClose={() => setOpen(false)} title={form.id ? "Edit customer" : "Add customer"} size="lg"
         footer={

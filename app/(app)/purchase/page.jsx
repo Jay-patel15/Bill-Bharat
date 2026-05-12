@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Plus, Sparkles, CreditCard, CheckCircle2, Clock, FileText, Trash2 } from "lucide-react";
+import { Plus, Sparkles, CreditCard, CheckCircle2, FileText, Trash2, ArrowLeft, Building2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,56 +15,83 @@ import { NoCompanySelected } from "@/components/empty-state";
 export default function PurchasesPage() {
   const { active } = useCompany();
   const [list, setList] = useState([]);
+  const [customers, setCustomers] = useState([]);
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState(null);
+  
+  // State for the "Personal Dashboard" View
+  const [selectedSupplierName, setSelectedSupplierName] = useState(null);
+  
+  // State for the specific bill Payment Modal
+  const [selectedBill, setSelectedBill] = useState(null);
   const [payAmount, setPayAmount] = useState("");
   const [payMethod, setPayMethod] = useState("Cash");
-  const [editMode, setEditMode] = useState(false);   // true = override amountPaid, false = add to it
+  const [editMode, setEditMode] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (active?.id) api("/api/purchases").then(setList).catch(() => setList([]));
+    if (active?.id) {
+      api("/api/purchases").then(setList).catch(() => setList([]));
+      api("/api/customers").then(setCustomers).catch(() => setCustomers([]));
+    }
   }, [active?.id]);
 
   if (!active) return <NoCompanySelected />;
 
-  const filtered = list.filter((p) =>
-    [p.supplierName, p.billNumber, p.status].some((f) => (f || "").toLowerCase().includes(search.toLowerCase()))
+  // Group purchases by Supplier
+  const suppliersMap = new Map();
+  list.forEach(p => {
+    const sName = p.supplierName || "Unknown Supplier";
+    if (!suppliersMap.has(sName)) {
+      suppliersMap.set(sName, {
+        name: sName,
+        gst: p.supplierGst,
+        purchases: []
+      });
+    }
+    suppliersMap.get(sName).purchases.push(p);
+  });
+  
+  const suppliers = Array.from(suppliersMap.values()).map(s => {
+    const totalBilled = s.purchases.reduce((sum, p) => sum + Number(p.total || 0), 0);
+    const totalPaid = s.purchases.reduce((sum, p) => sum + Number(p.amountPaid || 0), 0);
+    const totalPending = totalBilled - totalPaid;
+    return { ...s, totalBilled, totalPaid, totalPending };
+  });
+
+  // Filter for grid
+  const filteredSuppliers = suppliers.filter((s) =>
+    [s.name, s.gst].some((f) => (f || "").toLowerCase().includes(search.toLowerCase()))
   );
 
-  // Summary stats
-  const totalPayable = list.reduce((s, p) => s + Number(p.total || 0), 0);
-  const totalPaid    = list.reduce((s, p) => s + Number(p.amountPaid || 0), 0);
-  const totalPending = totalPayable - totalPaid;
+  // Global Summary stats
+  const totalGlobalPayable = list.reduce((s, p) => s + Number(p.total || 0), 0);
+  const totalGlobalPaid    = list.reduce((s, p) => s + Number(p.amountPaid || 0), 0);
+  const totalGlobalPending = totalGlobalPayable - totalGlobalPaid;
 
+  // --- Payment Modal Logic ---
   function openDetail(p) {
-    setSelected(p);
+    setSelectedBill(p);
     setPayAmount("");
     setPayMethod("Cash");
     setEditMode(false);
   }
 
   async function handlePayment(closeBill = false) {
-    if (!selected) return;
+    if (!selectedBill) return;
     const inputAmount = Number(payAmount) || 0;
-    const newTotal    = Number(selected.total || 0);
+    const newTotal    = Number(selectedBill.total || 0);
 
-    // If closing the bill, automatically set the paid amount to the full total.
-    // In edit mode we SET the amountPaid to the entered value.
-    // In normal mode we ADD to existing amountPaid.
     const newPaid = closeBill
       ? newTotal
       : editMode
         ? inputAmount
-        : Number(selected.amountPaid || 0) + inputAmount;
+        : Number(selectedBill.amountPaid || 0) + inputAmount;
 
-    // Validate: can't pay more than total
     if (newPaid > newTotal && !closeBill) {
       alert(`Amount paid (${formatINR(newPaid)}) cannot exceed bill total (${formatINR(newTotal)}).`);
       return;
     }
 
-    // Status: close bill = Paid, otherwise derive from actual amounts
     const newStatus = closeBill
       ? "Paid"
       : newPaid >= newTotal
@@ -75,12 +102,12 @@ export default function PurchasesPage() {
 
     setSaving(true);
     try {
-      const updated = await api(`/api/purchases/${selected.id}`, {
+      const updated = await api(`/api/purchases/${selectedBill.id}`, {
         method: "PUT",
         body: JSON.stringify({ amountPaid: newPaid, status: newStatus })
       });
       setList((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
-      setSelected(updated);
+      setSelectedBill(updated);
       setPayAmount("");
       setEditMode(false);
     } catch (e) {
@@ -90,19 +117,15 @@ export default function PurchasesPage() {
     }
   }
 
-  const pending  = selected ? Math.max(0, Number(selected.total || 0) - Number(selected.amountPaid || 0)) : 0;
-  // A bill is truly closed only when pending amount is 0, not just when status says "Paid"
-  const isClosed = pending <= 0 && Number(selected?.amountPaid || 0) > 0;
-
   async function handleDelete() {
-    if (!selected) return;
-    if (!confirm(`Are you sure you want to delete purchase bill ${selected.billNumber || "No Number"}? This action cannot be undone.`)) return;
+    if (!selectedBill) return;
+    if (!confirm(`Are you sure you want to delete purchase bill ${selectedBill.billNumber || "No Number"}? This action cannot be undone.`)) return;
     
     setSaving(true);
     try {
-      await api(`/api/purchases/${selected.id}`, { method: "DELETE" });
-      setList((prev) => prev.filter((p) => p.id !== selected.id));
-      setSelected(null);
+      await api(`/api/purchases/${selectedBill.id}`, { method: "DELETE" });
+      setList((prev) => prev.filter((p) => p.id !== selectedBill.id));
+      setSelectedBill(null);
     } catch (e) {
       alert(e.message || "Failed to delete purchase");
     } finally {
@@ -110,116 +133,31 @@ export default function PurchasesPage() {
     }
   }
 
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Purchases</h1>
-          <p className="text-sm text-muted-foreground">Track supplier bills, GST input credit and payables.</p>
-        </div>
-        <div className="flex gap-2">
-          <Link href="/purchase/ai-upload">
-            <Button variant="outline"><Sparkles className="h-4 w-4 mr-1" />AI upload</Button>
-          </Link>
-          <Link href="/purchase/create">
-            <Button><Plus className="h-4 w-4 mr-1" />New purchase</Button>
-          </Link>
-        </div>
-      </div>
+  const pendingAmount = selectedBill ? Math.max(0, Number(selectedBill.total || 0) - Number(selectedBill.amountPaid || 0)) : 0;
+  const isClosed = pendingAmount <= 0 && Number(selectedBill?.amountPaid || 0) > 0;
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: "Total Bills",   value: list.length,              color: "text-foreground",  Icon: FileText },
-          { label: "Total Payable", value: formatINR(totalPayable),  color: "text-foreground",  Icon: CreditCard },
-          { label: "Amount Paid",   value: formatINR(totalPaid),     color: "text-emerald-600", Icon: CheckCircle2 },
-          { label: "Pending",       value: formatINR(totalPending),  color: "text-red-500",     Icon: Clock },
-        ].map(({ label, value, color, Icon }) => (
-          <Card key={label}>
-            <CardContent className="p-4 flex items-center gap-3">
-              <Icon className={`h-8 w-8 ${color} opacity-75`} />
-              <div>
-                <p className="text-xs text-muted-foreground">{label}</p>
-                <p className={`text-lg font-bold ${color}`}>{value}</p>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* Table */}
-      <Card>
-        <CardHeader className="flex-row items-center justify-between gap-3">
-          <CardTitle>All purchases ({filtered.length})</CardTitle>
-          <Input
-            placeholder="Search supplier, bill #…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="max-w-xs"
-          />
-        </CardHeader>
-        <CardContent>
-          {filtered.length === 0 ? (
-            <div className="text-sm text-muted-foreground p-4">No purchases yet.</div>
-          ) : (
-            <Table>
-              <THead>
-                <TR>
-                  <TH>Bill #</TH>
-                  <TH>Date</TH>
-                  <TH>Supplier</TH>
-                  <TH className="text-right">Total</TH>
-                  <TH className="text-right">Paid</TH>
-                  <TH className="text-right">Pending</TH>
-                  <TH>Status</TH>
-                </TR>
-              </THead>
-              <TBody>
-                {filtered.map((p) => {
-                  const pendingAmt = Math.max(0, Number(p.total || 0) - Number(p.amountPaid || 0));
-                  return (
-                    <TR
-                      key={p.id}
-                      className="cursor-pointer hover:bg-muted/50 transition-colors"
-                      onClick={() => openDetail(p)}
-                    >
-                      <TD className="font-mono text-xs">{p.billNumber || "—"}</TD>
-                      <TD>{formatDate(p.billDate)}</TD>
-                      <TD className="font-medium">{p.supplierName}</TD>
-                      <TD className="text-right font-semibold">{formatINR(p.total)}</TD>
-                      <TD className="text-right text-emerald-600">{formatINR(p.amountPaid || 0)}</TD>
-                      <TD className="text-right font-medium" style={{ color: pendingAmt > 0 ? "var(--destructive, #ef4444)" : "var(--success, #16a34a)" }}>
-                        {formatINR(pendingAmt)}
-                      </TD>
-                      <TD><StatusBadge status={p.status} /></TD>
-                    </TR>
-                  );
-                })}
-              </TBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Purchase Detail + Payment Modal */}
+  // Define Payment Modal helper so we can reuse it
+  function renderPaymentModal() {
+    return (
       <Dialog
-        open={!!selected}
-        onClose={() => setSelected(null)}
-        title={selected ? `Bill — ${selected.billNumber || "No Number"} · ${selected.supplierName}` : ""}
+        open={!!selectedBill}
+        onClose={() => setSelectedBill(null)}
+        title={selectedBill ? `Bill — ${selectedBill.billNumber || "No Number"} · ${selectedBill.supplierName}` : ""}
         size="lg"
       >
-        {selected && (
+        {selectedBill && (
           <div className="space-y-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
-              {/* Supplier meta */}
               <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm mt-1">
-                {selected.supplierGst && (
-                  <span><span className="text-muted-foreground">GSTIN: </span>{selected.supplierGst}</span>
+                {selectedBill.customerId && (
+                  <span><span className="text-muted-foreground">Billed To: </span><span className="font-semibold text-primary">{customers.find(c => c.id === selectedBill.customerId)?.name || "Unknown"}</span></span>
                 )}
-                <span><span className="text-muted-foreground">Bill Date: </span>{formatDate(selected.billDate)}</span>
-                {selected.notes && (
-                  <span><span className="text-muted-foreground">Notes: </span>{selected.notes}</span>
+                {selectedBill.supplierGst && (
+                  <span><span className="text-muted-foreground">GSTIN: </span>{selectedBill.supplierGst}</span>
+                )}
+                <span><span className="text-muted-foreground">Bill Date: </span>{formatDate(selectedBill.billDate)}</span>
+                {selectedBill.notes && (
+                  <span><span className="text-muted-foreground">Notes: </span>{selectedBill.notes}</span>
                 )}
               </div>
               <Button 
@@ -246,7 +184,7 @@ export default function PurchasesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(Array.isArray(selected.items) ? selected.items : []).map((it, i) => (
+                  {(Array.isArray(selectedBill.items) ? selectedBill.items : []).map((it, i) => (
                     <tr key={i} className="border-t">
                       <td className="p-2">{it.name}</td>
                       <td className="p-2 text-right">{it.quantity} {it.unit}</td>
@@ -263,15 +201,15 @@ export default function PurchasesPage() {
             <div className="grid grid-cols-3 gap-3">
               <div className="rounded-lg border p-3 text-center">
                 <p className="text-xs text-muted-foreground mb-1">Bill Total</p>
-                <p className="text-xl font-bold">{formatINR(selected.total)}</p>
+                <p className="text-xl font-bold">{formatINR(selectedBill.total)}</p>
               </div>
               <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-center">
                 <p className="text-xs text-emerald-600 mb-1">Amount Paid</p>
-                <p className="text-xl font-bold text-emerald-700">{formatINR(selected.amountPaid || 0)}</p>
+                <p className="text-xl font-bold text-emerald-700">{formatINR(selectedBill.amountPaid || 0)}</p>
               </div>
-              <div className={`rounded-lg border p-3 text-center ${pending > 0 ? "border-red-200 bg-red-50" : "border-emerald-200 bg-emerald-50"}`}>
-                <p className={`text-xs mb-1 ${pending > 0 ? "text-red-500" : "text-emerald-600"}`}>Pending</p>
-                <p className={`text-xl font-bold ${pending > 0 ? "text-red-600" : "text-emerald-700"}`}>{formatINR(pending)}</p>
+              <div className={`rounded-lg border p-3 text-center ${pendingAmount > 0 ? "border-red-200 bg-red-50" : "border-emerald-200 bg-emerald-50"}`}>
+                <p className={`text-xs mb-1 ${pendingAmount > 0 ? "text-red-500" : "text-emerald-600"}`}>Pending</p>
+                <p className={`text-xl font-bold ${pendingAmount > 0 ? "text-red-600" : "text-emerald-700"}`}>{formatINR(pendingAmount)}</p>
               </div>
             </div>
 
@@ -283,11 +221,10 @@ export default function PurchasesPage() {
                     <CreditCard className="h-4 w-4" />
                     {editMode ? "Edit Total Paid Amount" : "Record Payment to Supplier"}
                   </p>
-                  {/* Toggle between Add mode and Edit mode */}
                   {!editMode ? (
                     <button
                       className="text-xs text-blue-600 underline hover:text-blue-800"
-                      onClick={() => { setEditMode(true); setPayAmount(String(selected.amountPaid || "")); }}
+                      onClick={() => { setEditMode(true); setPayAmount(String(selectedBill.amountPaid || "")); }}
                     >
                       ✏️ Edit paid amount
                     </button>
@@ -315,7 +252,7 @@ export default function PurchasesPage() {
                     <Input
                       type="number"
                       min="0"
-                      placeholder={editMode ? `Currently ${formatINR(selected.amountPaid || 0)}` : `Max ${formatINR(pending)}`}
+                      placeholder={editMode ? `Currently ${formatINR(selectedBill.amountPaid || 0)}` : `Max ${formatINR(pendingAmount)}`}
                       value={payAmount}
                       onChange={(e) => setPayAmount(e.target.value)}
                     />
@@ -358,7 +295,7 @@ export default function PurchasesPage() {
                         className="border-emerald-500 text-emerald-600 hover:bg-emerald-50"
                       >
                         <CheckCircle2 className="h-4 w-4 mr-1" />
-                        Close Bill (Mark Fully Paid)
+                        Close Bill
                       </Button>
                     </>
                   )}
@@ -372,7 +309,7 @@ export default function PurchasesPage() {
                 </div>
                 <button
                   className="text-xs text-blue-600 underline hover:text-blue-800"
-                  onClick={() => { setEditMode(true); setPayAmount(String(selected.amountPaid || "")); }}
+                  onClick={() => { setEditMode(true); setPayAmount(String(selectedBill.amountPaid || "")); }}
                 >
                   ✏️ Edit paid amount
                 </button>
@@ -381,6 +318,207 @@ export default function PurchasesPage() {
           </div>
         )}
       </Dialog>
+    );
+  }
+
+  // Render Personal Dashboard if a supplier is selected
+  if (selectedSupplierName) {
+    const supplierData = suppliersMap.get(selectedSupplierName);
+    const supplierPurchases = supplierData ? supplierData.purchases : [];
+    
+    const sBilled = supplierPurchases.reduce((s, p) => s + Number(p.total || 0), 0);
+    const sPaid = supplierPurchases.reduce((s, p) => s + Number(p.amountPaid || 0), 0);
+    const sPending = sBilled - sPaid;
+
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" onClick={() => setSelectedSupplierName(null)} className="h-8 w-8 rounded-full bg-muted/50 hover:bg-muted shrink-0">
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-semibold">{supplierData.name}</h1>
+            <p className="text-sm text-muted-foreground">{supplierData.gst ? `GSTIN: ${supplierData.gst}` : "No GSTIN provided"}</p>
+          </div>
+        </div>
+
+        {/* Supplier Specific Summary */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card className="bg-blue-50 border-blue-200">
+            <CardContent className="p-4">
+              <p className="text-xs text-blue-600 font-semibold mb-1 uppercase tracking-wider">Total Billed</p>
+              <p className="text-2xl font-bold text-blue-900">{formatINR(sBilled)}</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-emerald-50 border-emerald-200">
+            <CardContent className="p-4">
+              <p className="text-xs text-emerald-600 font-semibold mb-1 uppercase tracking-wider">Amount Paid</p>
+              <p className="text-2xl font-bold text-emerald-900">{formatINR(sPaid)}</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-red-50 border-red-200">
+            <CardContent className="p-4">
+              <p className="text-xs text-red-600 font-semibold mb-1 uppercase tracking-wider">Pending Balance</p>
+              <p className="text-2xl font-bold text-red-900">{formatINR(sPending)}</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Supplier Bills Table */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Purchase History</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {supplierPurchases.length === 0 ? (
+              <div className="text-sm text-muted-foreground p-4 text-center border border-dashed rounded-lg">No purchases found.</div>
+            ) : (
+              <Table>
+                <THead>
+                  <TR>
+                    <TH>Bill #</TH>
+                    <TH>Date</TH>
+                    <TH className="text-right">Total</TH>
+                    <TH className="text-right">Paid</TH>
+                    <TH className="text-right">Pending</TH>
+                    <TH>Status</TH>
+                  </TR>
+                </THead>
+                <TBody>
+                  {supplierPurchases.map((p) => {
+                    const pendingAmt = Math.max(0, Number(p.total || 0) - Number(p.amountPaid || 0));
+                    return (
+                      <TR
+                        key={p.id}
+                        className="cursor-pointer hover:bg-muted/50 transition-colors"
+                        onClick={() => openDetail(p)}
+                      >
+                        <TD className="font-mono text-xs">{p.billNumber || "—"}</TD>
+                        <TD>{formatDate(p.billDate)}</TD>
+                        <TD className="text-right font-semibold">{formatINR(p.total)}</TD>
+                        <TD className="text-right text-emerald-600">{formatINR(p.amountPaid || 0)}</TD>
+                        <TD className="text-right font-medium" style={{ color: pendingAmt > 0 ? "var(--destructive, #ef4444)" : "var(--success, #16a34a)" }}>
+                          {formatINR(pendingAmt)}
+                        </TD>
+                        <TD><StatusBadge status={p.status} /></TD>
+                      </TR>
+                    );
+                  })}
+                </TBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+        
+        {/* We reuse the exact same Payment Modal here */}
+        {renderPaymentModal()}
+      </div>
+    );
+  }
+
+  // --- Main Supplier Grid View ---
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Purchases & Suppliers</h1>
+          <p className="text-sm text-muted-foreground">Manage your vendors, supplier bills, and payables.</p>
+        </div>
+        <div className="flex gap-2">
+          <Link href="/purchase/ai-upload">
+            <Button variant="outline"><Sparkles className="h-4 w-4 mr-1" />AI upload</Button>
+          </Link>
+          <Link href="/purchase/create">
+            <Button><Plus className="h-4 w-4 mr-1" />New purchase</Button>
+          </Link>
+        </div>
+      </div>
+
+      {/* Global Summary cards mimicking the Customers dashboard colors */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="bg-blue-50 border-blue-200">
+          <CardContent className="p-4">
+            <p className="text-xs text-blue-600 font-semibold mb-1 uppercase tracking-wider">Total Purchase Value</p>
+            <p className="text-2xl font-bold text-blue-900">{formatINR(totalGlobalPayable)}</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-emerald-50 border-emerald-200">
+          <CardContent className="p-4">
+            <p className="text-xs text-emerald-600 font-semibold mb-1 uppercase tracking-wider">Total Amount Paid</p>
+            <p className="text-2xl font-bold text-emerald-900">{formatINR(totalGlobalPaid)}</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-red-50 border-red-200">
+          <CardContent className="p-4">
+            <p className="text-xs text-red-600 font-semibold mb-1 uppercase tracking-wider">Total Pending Payables</p>
+            <p className="text-2xl font-bold text-red-900">{formatINR(totalGlobalPending)}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Grid Controls */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+        <h2 className="text-lg font-semibold text-foreground/80">Your Suppliers ({filteredSuppliers.length})</h2>
+        <Input 
+          placeholder="Search supplier, GSTIN…" 
+          value={search} 
+          onChange={(e) => setSearch(e.target.value)} 
+          className="max-w-xs bg-background" 
+        />
+      </div>
+
+      {/* Suppliers Grid */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {filteredSuppliers.length === 0 ? (
+          <div className="col-span-full text-sm text-muted-foreground p-8 text-center border border-dashed rounded-lg bg-card">
+            No suppliers found. Start by creating a new purchase!
+          </div>
+        ) : (
+          filteredSuppliers.map((s) => (
+            <Card key={s.name} className="flex flex-col hover:border-primary/50 transition-colors shadow-sm">
+              <CardHeader className="p-4 pb-3 border-b bg-muted/10">
+                <div className="flex items-start gap-3">
+                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                    <Building2 className="h-4 w-4 text-primary" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="font-semibold text-base truncate" title={s.name}>{s.name}</h3>
+                    <div className="text-[11px] text-muted-foreground mt-0.5 space-y-0.5">
+                      {s.gst ? <div className="truncate">📝 GST: {s.gst}</div> : <div className="italic">No GSTIN</div>}
+                    </div>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="p-4 flex-1 flex flex-col gap-3">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-muted-foreground">Total Billed</span>
+                  <span className="font-medium text-foreground">{formatINR(s.totalBilled)}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-muted-foreground">Total Paid</span>
+                  <span className="font-medium text-emerald-600">{formatINR(s.totalPaid)}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-muted-foreground">Pending</span>
+                  <span className="font-medium text-red-600">{formatINR(s.totalPending)}</span>
+                </div>
+                <div className="mt-auto pt-3">
+                  <Button 
+                    variant="outline" 
+                    className="w-full h-8 text-xs bg-muted/30 hover:bg-muted/50"
+                    onClick={() => setSelectedSupplierName(s.name)}
+                  >
+                    <FileText className="h-3.5 w-3.5 mr-1.5" /> View Ledger ({s.purchases.length})
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        )}
+      </div>
+      {/* We reuse the exact same Payment Modal here so it can theoretically open from anywhere */}
+      {renderPaymentModal()}
     </div>
   );
 }

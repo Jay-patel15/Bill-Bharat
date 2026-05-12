@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Sparkles, Upload, FileCheck, Loader2, X, RefreshCw, Plus, Trash2,
@@ -32,6 +32,11 @@ export default function AiUploadPage() {
   const [savingDraft, setSavingDraft] = useState(false);
   const [savingFinal, setSavingFinal] = useState(false);
 
+  const [customers, setCustomers] = useState([]);
+  const [productMappings, setProductMappings] = useState([]);
+  const [purchases, setPurchases] = useState([]);
+  const [customerId, setCustomerId] = useState("");
+
   // Generate / revoke object URL when file changes
   useEffect(() => {
     if (!file) { setPreviewUrl(""); return; }
@@ -40,7 +45,14 @@ export default function AiUploadPage() {
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
-  if (!active) return <NoCompanySelected />;
+  useEffect(() => {
+    if (active?.id) {
+      api("/api/customers").then(setCustomers).catch(() => setCustomers([]));
+      api("/api/product-mappings").then(setProductMappings).catch(() => setProductMappings([]));
+      api("/api/purchases").then(setPurchases).catch(() => setPurchases([]));
+    }
+  }, [active?.id]);
+
 
   function calcConfidence(data) {
     let score = 0;
@@ -101,6 +113,8 @@ export default function AiUploadPage() {
     });
   }, [parsed, active?.stateCode, active?.gstNumber]);
 
+  if (!active) return <NoCompanySelected />;
+
   function setItem(i, patch) {
     setParsed((p) => ({ ...p, items: p.items.map((it, idx) => idx === i ? { ...it, ...patch } : it) }));
   }
@@ -133,7 +147,8 @@ export default function AiUploadPage() {
           notes: parsed.notes || "",
           status: asDraft ? "Pending" : "Unpaid",
           autoCreateInventory: !asDraft,
-          pdfUrl
+          pdfUrl,
+          customerId
         })
       });
       toast({ type: "success", title: asDraft ? "Saved as draft" : "Approved & inventory updated" });
@@ -186,6 +201,8 @@ export default function AiUploadPage() {
   const totalTax = (computed?.cgst || 0) + (computed?.sgst || 0) + (computed?.igst || 0);
   const high = confidence >= 85;
   const med = confidence >= 60;
+  
+  const isDuplicate = parsed && parsed.billNumber && purchases.some(p => p.billNumber === parsed.billNumber && (p.supplierName === parsed.supplierName || p.supplierGst === parsed.supplierGst));
 
   return (
     <div className="space-y-4">
@@ -237,7 +254,28 @@ export default function AiUploadPage() {
           </div>
 
           <div className="p-4 space-y-4 max-h-[720px] overflow-auto">
+            {isDuplicate && (
+              <div className="bg-red-50 text-red-700 p-3 rounded-md border border-red-200 text-sm flex items-start gap-2 shadow-sm">
+                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                <div>
+                  <strong>Warning! Duplicate Bill Detected.</strong>
+                  <p>A bill with number <b>{parsed.billNumber}</b> from this supplier already exists in your purchases.</p>
+                </div>
+              </div>
+            )}
+
             {/* Top fields */}
+            <div className="mb-4">
+              <Field label="BILLED TO (CUSTOMER / BUILDER)">
+                <Select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
+                  <option value="">-- None (Company Expense) --</option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <Field label="VENDOR NAME">
                 <Input value={parsed.supplierName} onChange={(e) => setParsed({ ...parsed, supplierName: e.target.value })} />
@@ -270,6 +308,7 @@ export default function AiUploadPage() {
                     key={i}
                     item={it}
                     computed={computed?.items[i]}
+                    mappings={productMappings}
                     onChange={(patch) => setItem(i, patch)}
                     onRemove={() => removeItem(i)}
                   />
@@ -315,17 +354,30 @@ export default function AiUploadPage() {
   );
 }
 
-function ItemCard({ item, computed, onChange, onRemove }) {
+function ItemCard({ item, computed, mappings, onChange, onRemove }) {
   return (
-    <div className="rounded-md border p-3 space-y-2 bg-background">
-      <div className="flex items-start gap-2">
-        <Input
-          className="font-medium flex-1"
-          value={item.name}
-          onChange={(e) => onChange({ name: e.target.value })}
-          placeholder="Product name"
-        />
-        <Button variant="ghost" size="icon" onClick={onRemove}><Trash2 className="h-4 w-4" /></Button>
+    <div className="rounded-md border-2 border-slate-300 dark:border-slate-600 p-3 space-y-2 bg-background shadow-sm">
+      <div className="flex flex-col gap-2 mb-2 border-b pb-3">
+        <div className="flex items-start gap-2">
+          <Input
+            className="font-medium flex-1"
+            value={item.name}
+            onChange={(e) => onChange({ name: e.target.value })}
+            placeholder="Product name"
+          />
+          <Button variant="ghost" size="icon" onClick={onRemove}><Trash2 className="h-4 w-4" /></Button>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-muted-foreground uppercase font-semibold whitespace-nowrap">Product Link To:</span>
+          <SearchableSelect 
+            options={(mappings || []).map(m => ({ value: m.realName, label: m.realName }))}
+            value={mappings?.some(m => m.realName === item.name) ? item.name : ""}
+            onChange={(val) => {
+              if (val) onChange({ name: val });
+            }}
+            placeholder="-- Search Master Product --"
+          />
+        </div>
       </div>
       <div className="grid grid-cols-4 gap-2">
         <LabeledMini label="SKU">
@@ -368,4 +420,62 @@ function LabeledMini({ label, children }) {
 
 function Row({ label, value }) {
   return <div className="flex justify-between"><span className="text-muted-foreground">{label}</span><span>{value}</span></div>;
+}
+
+function SearchableSelect({ options, value, onChange, placeholder }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function handleClick(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const displayValue = options.find(o => o.value === value)?.label || "";
+
+  return (
+    <div className="relative flex-1" ref={ref}>
+      <div 
+        className="flex h-8 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-xs ring-offset-background cursor-pointer hover:bg-muted/30"
+        onClick={() => setOpen(!open)}
+      >
+        <span className={displayValue ? "" : "text-muted-foreground"}>{displayValue || placeholder}</span>
+      </div>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 w-full z-50 bg-background border rounded-md shadow-md max-h-56 flex flex-col overflow-hidden">
+          <div className="p-1 border-b bg-muted/20">
+            <input 
+              autoFocus
+              className="h-8 w-full text-xs px-2 bg-transparent outline-none" 
+              placeholder="Type to search..." 
+              value={search} 
+              onChange={e => setSearch(e.target.value)} 
+            />
+          </div>
+          <div className="overflow-y-auto p-1 bg-background">
+            {options.filter(o => o.label.toLowerCase().includes(search.toLowerCase())).map(o => (
+              <div 
+                key={o.value} 
+                className={`px-2 py-1.5 text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer rounded-sm ${o.value === value ? "bg-accent/50 font-medium" : ""}`}
+                onClick={() => {
+                  onChange(o.value);
+                  setOpen(false);
+                  setSearch("");
+                }}
+              >
+                {o.label}
+              </div>
+            ))}
+            {options.filter(o => o.label.toLowerCase().includes(search.toLowerCase())).length === 0 && (
+              <div className="px-2 py-3 text-xs text-muted-foreground text-center">No matches found</div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }

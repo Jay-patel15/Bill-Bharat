@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { computeInvoice, gstStateFromGstin, GST_SLABS } from "@/lib/gst";
 import { formatINR } from "@/lib/utils";
-import { useCompany } from "./company-context";
+import { useCompany, api } from "./company-context";
 
 const blankItem = () => ({
   name: "", sku: "", hsnCode: "", quantity: 1, unit: "PCS",
@@ -24,6 +24,15 @@ export function PurchaseForm({ initial = {}, onSubmit, submitLabel = "Save purch
   const [notes, setNotes] = useState(initial.notes || "");
   const [autoCreate, setAutoCreate] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  const [customers, setCustomers] = useState([]);
+  const [customerId, setCustomerId] = useState(initial.customerId || "");
+
+  useEffect(() => {
+    if (active?.id) {
+      api("/api/customers").then(setCustomers).catch(() => setCustomers([]));
+    }
+  }, [active?.id]);
 
   useEffect(() => {
     if (initial.items?.length) setItems(initial.items);
@@ -46,7 +55,8 @@ export function PurchaseForm({ initial = {}, onSubmit, submitLabel = "Save purch
       await onSubmit({
         supplierName, supplierGst, billNumber, billDate,
         items, amountPaid: Number(amountPaid) || 0, notes,
-        autoCreateInventory: autoCreate
+        autoCreateInventory: autoCreate,
+        customerId
       });
     } finally { setSaving(false); }
   }
@@ -56,6 +66,15 @@ export function PurchaseForm({ initial = {}, onSubmit, submitLabel = "Save purch
       <Card>
         <CardHeader><CardTitle>Supplier & bill</CardTitle></CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
+          <Field label="Billed To (Customer / Builder)">
+            <Select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
+              <option value="">-- None (Company Expense) --</option>
+              {customers.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </Select>
+          </Field>
+          <div className="md:col-span-1 hidden" /> {/* spacer for layout */}
           <Field label="Supplier name *"><Input required value={supplierName} onChange={(e) => setSupplierName(e.target.value)} /></Field>
           <Field label="Supplier GSTIN"><Input value={supplierGst} onChange={(e) => setSupplierGst(e.target.value.toUpperCase())} /></Field>
           <Field label="Bill number"><Input value={billNumber} onChange={(e) => setBillNumber(e.target.value)} /></Field>
