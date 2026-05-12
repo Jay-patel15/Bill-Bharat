@@ -48,7 +48,11 @@ The project followed a three-phase evolution to reach its current stable state:
 
 ### 🤖 AI-Powered Procurement (AI Upload)
 - **Automatic Extraction**: Users can upload images or PDFs of purchase bills.
-- **Gemini AI Integration**: The system uses Google Gemini AI to read the document and automatically extract the Supplier Name, GSTIN, Bill Number, Date, and itemized rows (Rates, Quantities, and GST).
+- **Extracted Text Preservation**: The system preserves the exact text found on the bill (`realName`) even if you map it to a different product in your inventory.
+- **Smart Product Mapping**: 
+    - If the system recognizes an extracted name from previous bills, it auto-suggests your preferred "System Name."
+    - If it's a new product, you can link it to an existing inventory item or keep it as is.
+    - **Approval Workflow**: Upon approval, the system automatically creates a permanent mapping between the supplier's name for the product and your system name. It also automatically creates the product in your **Inventory (Settings List)** if it doesn't already exist.
 - **One-Click Saving**: Extracted data is mapped to the database instantly, eliminating manual data entry.
 
 ### 🚛 Purchase & Supplier Dashboard (New)
@@ -84,9 +88,10 @@ CREATE TABLE inventory ( id text primary key, "companyId" text, name text, sku t
 CREATE TABLE sales ( id text primary key, "companyId" text, "customerId" text, "projectId" text, "documentType" text, "invoiceNumber" text, "invoiceDate" text, "dueDate" text, items jsonb, subtotal numeric, discount numeric, cgst numeric, sgst numeric, igst numeric, total numeric, "amountPaid" numeric, status text, notes text, "pdfUrl" text, "createdAt" text, "updatedAt" text );
 CREATE TABLE purchases ( id text primary key, "companyId" text, "supplierName" text, "supplierGst" text, "billNumber" text, "billDate" text, items jsonb, subtotal numeric, cgst numeric, sgst numeric, igst numeric, total numeric, "amountPaid" numeric, status text, notes text, "pdfUrl" text, "createdAt" text, "updatedAt" text, "customerId" text );
 
--- Projects & Payments
+-- Projects, Payments & Mappings
 CREATE TABLE projects ( id text primary key, "companyId" text, "customerId" text, name text, code text, description text, "boqItems" jsonb, "contractValue" numeric, "startDate" text, "endDate" text, status text, notes text, "createdAt" text, "updatedAt" text );
 CREATE TABLE payments ( id text primary key, "companyId" text, type text, "refId" text, amount numeric, method text, date text, notes text, "createdAt" text, "updatedAt" text );
+CREATE TABLE product_mappings ( id text primary key, "companyId" text, "realName" text, "systemName" text, "createdAt" text, "updatedAt" text );
 ```
 
 ---

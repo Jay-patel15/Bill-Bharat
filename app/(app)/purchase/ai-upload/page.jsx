@@ -32,7 +32,7 @@ export default function AiUploadPage() {
   const [savingDraft, setSavingDraft] = useState(false);
   const [savingFinal, setSavingFinal] = useState(false);
 
-  const [customers, setCustomers] = useState([]);
+  const [inventory, setInventory] = useState([]);
   const [productMappings, setProductMappings] = useState([]);
   const [purchases, setPurchases] = useState([]);
   const [customerId, setCustomerId] = useState("");
@@ -48,6 +48,7 @@ export default function AiUploadPage() {
   useEffect(() => {
     if (active?.id) {
       api("/api/customers").then(setCustomers).catch(() => setCustomers([]));
+      api("/api/inventory").then(setInventory).catch(() => setInventory([]));
       api("/api/product-mappings").then(setProductMappings).catch(() => setProductMappings([]));
       api("/api/purchases").then(setPurchases).catch(() => setPurchases([]));
     }
@@ -79,21 +80,30 @@ export default function AiUploadPage() {
       const res = await fetch("/api/ai/parse-pdf", { method: "POST", body: fd });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error);
+      
       const normalized = {
         supplierName: json.data.supplierName || "",
         supplierGst: json.data.supplierGst || "",
         billNumber: json.data.billNumber || "",
         billDate: json.data.billDate || new Date().toISOString().slice(0, 10),
-        items: (json.data.items || []).map((it) => ({
-          name: it.name || "",
-          sku: "",
-          hsnCode: it.hsnCode || "",
-          quantity: Number(it.quantity) || 1,
-          unit: it.unit || "PCS",
-          purchasePrice: Number(it.purchasePrice) || 0,
-          gstRate: Number(it.gstRate) || 18,
-          discount: Number(it.discount) || 0
-        })),
+        items: (json.data.items || []).map((it) => {
+          const extractedName = it.name || "";
+          // Check if we already have a mapping for this name
+          const mapping = productMappings.find(m => m.realName?.toLowerCase() === extractedName.toLowerCase());
+          const systemName = mapping?.systemName || extractedName;
+
+          return {
+            name: systemName,
+            realName: extractedName, // Keep original extracted text
+            sku: "",
+            hsnCode: it.hsnCode || "",
+            quantity: Number(it.quantity) || 1,
+            unit: it.unit || "PCS",
+            purchasePrice: Number(it.purchasePrice) || 0,
+            gstRate: Number(it.gstRate) || 18,
+            discount: Number(it.discount) || 0
+          };
+        }),
         notes: ""
       };
       setParsed(normalized);
@@ -308,7 +318,7 @@ export default function AiUploadPage() {
                     key={i}
                     item={it}
                     computed={computed?.items[i]}
-                    mappings={productMappings}
+                    inventory={inventory}
                     onChange={(patch) => setItem(i, patch)}
                     onRemove={() => removeItem(i)}
                   />
@@ -354,28 +364,33 @@ export default function AiUploadPage() {
   );
 }
 
-function ItemCard({ item, computed, mappings, onChange, onRemove }) {
+function ItemCard({ item, computed, inventory, onChange, onRemove }) {
   return (
     <div className="rounded-md border-2 border-slate-300 dark:border-slate-600 p-3 space-y-2 bg-background shadow-sm">
       <div className="flex flex-col gap-2 mb-2 border-b pb-3">
-        <div className="flex items-start gap-2">
-          <Input
-            className="font-medium flex-1"
-            value={item.name}
-            onChange={(e) => onChange({ name: e.target.value })}
-            placeholder="Product name"
-          />
-          <Button variant="ghost" size="icon" onClick={onRemove}><Trash2 className="h-4 w-4" /></Button>
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1">
+             <div className="text-[10px] text-amber-600 font-bold uppercase mb-1 flex items-center gap-1">
+                <Sparkles className="h-3 w-3" /> Extracted: {item.realName}
+             </div>
+             <Input
+                className="font-medium h-9"
+                value={item.name}
+                onChange={(e) => onChange({ name: e.target.value })}
+                placeholder="System product name"
+              />
+          </div>
+          <Button variant="ghost" size="icon" className="mt-5" onClick={onRemove}><Trash2 className="h-4 w-4" /></Button>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-muted-foreground uppercase font-semibold whitespace-nowrap">Product Link To:</span>
+          <span className="text-[10px] text-muted-foreground uppercase font-semibold whitespace-nowrap">Link To Master Product:</span>
           <SearchableSelect 
-            options={(mappings || []).map(m => ({ value: m.realName, label: m.realName }))}
-            value={mappings?.some(m => m.realName === item.name) ? item.name : ""}
+            options={(inventory || []).map(inv => ({ value: inv.name, label: inv.name }))}
+            value={inventory?.some(inv => inv.name === item.name) ? item.name : ""}
             onChange={(val) => {
               if (val) onChange({ name: val });
             }}
-            placeholder="-- Search Master Product --"
+            placeholder={item.name || "-- Search Inventory --"}
           />
         </div>
       </div>

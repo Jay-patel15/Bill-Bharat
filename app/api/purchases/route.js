@@ -67,9 +67,28 @@ export async function POST(req) {
       // Increase inventory: match by sku else by name
       for (const it of body.items || []) {
         if (!it.name) continue;
+
+        // 1. Handle Product Mapping if realName is different from name
+        if (it.realName && it.realName.toLowerCase() !== it.name.toLowerCase()) {
+          const mapping = await findOne("product_mappings", (m) => 
+            m.companyId === companyId && m.realName?.toLowerCase() === it.realName.toLowerCase()
+          );
+          if (!mapping) {
+            await insert("product_mappings", {
+              companyId,
+              realName: it.realName,
+              systemName: it.name
+            });
+          } else if (mapping.systemName !== it.name) {
+            await update("product_mappings", mapping.id, { systemName: it.name });
+          }
+        }
+
+        // 2. Update / Create Inventory
         let inv = null;
         if (it.sku) inv = await findOne("inventory", (i) => i.companyId === companyId && i.sku === it.sku);
         if (!inv) inv = await findOne("inventory", (i) => i.companyId === companyId && i.name?.toLowerCase() === it.name.toLowerCase());
+        
         if (inv) {
           await update("inventory", inv.id, {
             quantity: Number(inv.quantity || 0) + Number(it.quantity || 0),
