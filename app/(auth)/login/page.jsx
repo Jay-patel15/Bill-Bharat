@@ -22,7 +22,13 @@ export default function LoginPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(form)
       });
-      const json = await res.json();
+      const text = await res.text();
+      let json = {};
+      try {
+        json = JSON.parse(text);
+      } catch (e) {
+        throw new Error(`Server error (${res.status}). Check Vercel logs or environment variables.`);
+      }
       if (!res.ok || !json.ok) throw new Error(json.error || "Login failed");
       const next = params.get("next") || "/dashboard";
       router.replace(next);
