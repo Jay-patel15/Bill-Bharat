@@ -3,6 +3,7 @@ import { assertCompanyAccess, getCompanyIdFromRequest } from "@/lib/db";
 import { findById, findWhere, insert, update } from "@/lib/db";
 import { computeInvoice, gstStateFromGstin } from "@/lib/gst";
 import { getDocumentType, nextInvoiceNumber } from "@/lib/utils";
+import { recordSaleAccounting } from "@/lib/accounting";
 
 export async function GET(req) {
   return withUser(async (user) => {
@@ -102,7 +103,12 @@ export async function POST(req) {
       // Outstanding only for docs that are real bills
       if (docType.affectsOutstanding) {
         const outstanding = Number(customer.outstanding || 0) + (computed.grandTotal - (Number(body.amountPaid) || 0));
-        await update("customers", customer.id, { outstanding });
+        await update("customers", customer.id, { outstanding }, user.id);
+      }
+
+      // Accounting Ledger (Double-Entry)
+      if (docType.affectsOutstanding) {
+        await recordSaleAccounting(created, customer.name);
       }
 
       return ok(created);

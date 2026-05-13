@@ -55,10 +55,23 @@ The project followed a three-phase evolution to reach its current stable state:
     - **Approval Workflow**: Upon approval, the system automatically creates a permanent mapping between the supplier's name for the product and your system name. It also automatically creates the product in your **Inventory (Settings List)** if it doesn't already exist.
 - **One-Click Saving**: Extracted data is mapped to the database instantly, eliminating manual data entry.
 
-### 🚛 Purchase & Supplier Dashboard (New)
+### 🚛 Purchase & Supplier Dashboard
 - **Supplier Grid**: Automatically groups all purchase bills by vendor.
 - **Liability Management**: Tracks exactly how much is owed to which supplier.
 - **Quick Payments**: Dedicated interface for recording payments to vendors, supporting partial payments and total bill closure.
+
+### 🏛️ Professional Accounting (Tally-Style)
+- **Double-Entry Ledger Engine**: Behind the scenes, the system now implements a full double-entry accounting engine. Every **Sale** or **Invoice** automatically generates corresponding **Debit** and **Credit** rows in the `ledger_entries` table.
+- **Manual Journal Vouchers (F7)**:
+    - **What it is**: A professional accounting tool to record non-cash transactions or adjustments (e.g., Depreciation, Year-end adjustments).
+    - **How to use**: Go to **Manual Journals** in the sidebar. Click **New Journal**. Add at least two ledger rows (one Debit, one Credit). The system ensures the entry is **balanced** before saving.
+- **Audit Trails (Edit History)**:
+    - **What it is**: A mandatory feature for CA compliance that tracks every modification to the data.
+    - **How it works**: The core database adapter (`lib/db.js`) now hooks into every `UPDATE` and `DELETE` operation. It saves the **old version**, the **new version**, and the **user** who made the change in the `audit_logs` table.
+    - **How to access**: View the **Audit Log** report from the sidebar to see the chronological history of changes.
+- **Statutory Compliance (GSTR-1 JSON)**:
+    - **What it is**: A one-click tool to export data for the GST Portal.
+    - **How to use**: In the **GST Report** page, click **Export GSTR-1 JSON**. It generates a government-compatible JSON file that can be directly uploaded to the GST portal for filing.
 
 ---
 
@@ -66,32 +79,25 @@ The project followed a three-phase evolution to reach its current stable state:
 
 ### The "Drop-in Adapter" Architecture
 To migrate without breaking the existing codebase, we implemented a **Database Abstraction Layer**.
-- **File Location**: `lib/google/sheets.js` (Acting as the Supabase adapter).
+- **File Location**: `lib/db.js` (Primary Supabase adapter).
 - **Functionality**: This file exports standard CRUD functions (`listAll`, `insert`, `update`, `findOne`) that match the original API expected by the app.
-- **Why?**: This allowed a 100% backend swap with 0% changes to the application's business logic.
+- **Audit Integration**: The `update` and `remove` functions are now globally instrumented to record **Audit Logs** for every transaction.
 
 ### Database Setup (SQL Schema)
 The following SQL creates the relational backbone of the app. **Note: All `id` fields are `text` for client-side UUID flexibility.**
 
 ```sql
--- Users & Auth
-CREATE TABLE users ( id text primary key, email text, "passwordHash" text, name text, "googleId" text, role text, "resetToken" text, "resetTokenExpiresAt" text, "createdAt" text, "updatedAt" text );
+-- Users, Companies, Customers, Inventory, Sales, Purchases, Projects, Payments, etc...
+-- (Refer to existing SQL above)
 
--- Core Business
-CREATE TABLE companies ( id text primary key, "userId" text, name text, "logoUrl" text, address text, city text, state text, "stateCode" text, pincode text, "gstNumber" text, "panNumber" text, "bankAccountNo" text, "bankIfsc" text, "bankName" text, "termsAndConditions" text, phone text, email text, "createdAt" text, "updatedAt" text, "bankBranch" text );
+-- NEW: Audit Logs (Edit Log for CA compliance)
+CREATE TABLE audit_logs ( id text primary key, "companyId" text, "userId" text, "table" text, "recordId" text, action text, "oldData" text, "newData" text, "createdAt" text );
 
--- CRM & Inventory
-CREATE TABLE customers ( id text primary key, "companyId" text, name text, phone text, email text, address text, state text, "stateCode" text, "gstNumber" text, "creditLimit" numeric, outstanding numeric, "createdAt" text, "updatedAt" text );
-CREATE TABLE inventory ( id text primary key, "companyId" text, name text, sku text, category text, "purchasePrice" numeric, "sellingPrice" numeric, "gstRate" numeric, quantity numeric, "lowStockThreshold" numeric, unit text, "hsnCode" text, "createdAt" text, "updatedAt" text );
+-- NEW: Ledger Entries (Atomic Double-Entry rows)
+CREATE TABLE ledger_entries ( id text primary key, "companyId" text, date text, type text, "refId" text, "ledgerName" text, debit numeric DEFAULT 0, credit numeric DEFAULT 0, description text, "createdAt" text );
 
--- Transactions
-CREATE TABLE sales ( id text primary key, "companyId" text, "customerId" text, "projectId" text, "documentType" text, "invoiceNumber" text, "invoiceDate" text, "dueDate" text, items jsonb, subtotal numeric, discount numeric, cgst numeric, sgst numeric, igst numeric, total numeric, "amountPaid" numeric, status text, notes text, "pdfUrl" text, "createdAt" text, "updatedAt" text );
-CREATE TABLE purchases ( id text primary key, "companyId" text, "supplierName" text, "supplierGst" text, "billNumber" text, "billDate" text, items jsonb, subtotal numeric, cgst numeric, sgst numeric, igst numeric, total numeric, "amountPaid" numeric, status text, notes text, "pdfUrl" text, "createdAt" text, "updatedAt" text, "customerId" text );
-
--- Projects, Payments & Mappings
-CREATE TABLE projects ( id text primary key, "companyId" text, "customerId" text, name text, code text, description text, "boqItems" jsonb, "contractValue" numeric, "startDate" text, "endDate" text, status text, notes text, "createdAt" text, "updatedAt" text );
-CREATE TABLE payments ( id text primary key, "companyId" text, type text, "refId" text, amount numeric, method text, date text, notes text, "createdAt" text, "updatedAt" text );
-CREATE TABLE product_mappings ( id text primary key, "companyId" text, "realName" text, "systemName" text, "createdAt" text, "updatedAt" text );
+-- NEW: Journal Entries (Container for Manual Journals)
+CREATE TABLE journal_entries ( id text primary key, "companyId" text, date text, description text, entries jsonb, "createdAt" text, "updatedAt" text );
 ```
 
 ---

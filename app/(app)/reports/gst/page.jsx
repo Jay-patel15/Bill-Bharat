@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Loader2, AlertCircle } from "lucide-react";
+import { Loader2, AlertCircle, Download } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/input";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
@@ -34,6 +34,21 @@ export default function GstReportPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-semibold">GST report</h1>
+        <Button 
+          variant="outline" 
+          className="gap-2"
+          onClick={async () => {
+            const data = await api("/api/reports/gst/export");
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `GSTR1_${active.gstNumber || 'export'}.json`;
+            a.click();
+          }}
+        >
+          <Download className="h-4 w-4" /> Export GSTR-1 JSON
+        </Button>
       </div>
 
       <Card>
