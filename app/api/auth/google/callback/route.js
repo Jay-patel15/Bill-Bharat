@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { signSession, setSessionCookie } from "@/lib/auth";
-import { findOne, insert, update } from "@/lib/google/sheets";
+import { findOne, insert, update } from "@/lib/db";
 
 export async function GET(req) {
   const url = new URL(req.url);
@@ -46,3 +46,4 @@ export async function GET(req) {
   await setSessionCookie(jwt);
   return NextResponse.redirect(new URL("/dashboard", url.origin));
 }
+

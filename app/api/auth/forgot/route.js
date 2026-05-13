@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { fail, ok, readBody } from "@/lib/api";
-import { findOne, update } from "@/lib/google/sheets";
+import { findOne, update } from "@/lib/db";
 
 /**
  * Generates a reset token. In production this would be emailed.
@@ -24,3 +24,4 @@ export async function POST(req) {
     resetUrl: `${baseUrl}/reset-password?token=${token}&email=${encodeURIComponent(email)}`
   });
 }
+

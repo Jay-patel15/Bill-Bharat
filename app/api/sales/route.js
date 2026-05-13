@@ -1,6 +1,6 @@
 import { fail, ok, readBody, withUser } from "@/lib/api";
 import { assertCompanyAccess, getCompanyIdFromRequest } from "@/lib/db";
-import { findById, findWhere, insert, update } from "@/lib/google/sheets";
+import { findById, findWhere, insert, update } from "@/lib/db";
 import { computeInvoice, gstStateFromGstin } from "@/lib/gst";
 import { getDocumentType, nextInvoiceNumber } from "@/lib/utils";
 
@@ -109,3 +109,4 @@ export async function POST(req) {
     } catch (e) { return fail(e.message, e.status || 500); }
   });
 }
+

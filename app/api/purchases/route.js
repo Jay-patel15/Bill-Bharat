@@ -1,6 +1,6 @@
 import { fail, ok, readBody, withUser } from "@/lib/api";
 import { assertCompanyAccess, getCompanyIdFromRequest } from "@/lib/db";
-import { findById, findOne, findWhere, insert, update } from "@/lib/google/sheets";
+import { findById, findOne, findWhere, insert, update } from "@/lib/db";
 import { computeInvoice, gstStateFromGstin } from "@/lib/gst";
 
 export async function GET(req) {

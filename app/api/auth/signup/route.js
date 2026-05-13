@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { fail, ok, readBody } from "@/lib/api";
 import { signSession, setSessionCookie } from "@/lib/auth";
-import { findOne, insert } from "@/lib/google/sheets";
+import { findOne, insert } from "@/lib/db";
 
 const Schema = z.object({
   email: z.string().email(),
@@ -33,3 +33,4 @@ export async function POST(req) {
   await setSessionCookie(token);
   return ok({ id: user.id, email: user.email, name: user.name });
 }
+

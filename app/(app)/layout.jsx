@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
-import { findWhere } from "@/lib/google/sheets";
+import { findWhere } from "@/lib/db";
 import { CompanyProvider } from "@/components/company-context";
 import { ToastProvider } from "@/components/ui/toast";
 import { AppShell } from "@/components/app-shell";
@@ -22,3 +22,4 @@ export default async function AppLayout({ children }) {
     </ToastProvider>
   );
 }
+

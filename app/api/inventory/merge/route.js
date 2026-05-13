@@ -1,6 +1,6 @@
 import { fail, ok, readBody, withUser } from "@/lib/api";
 import { assertCompanyAccess } from "@/lib/db";
-import { findById, remove, update } from "@/lib/google/sheets";
+import { findById, remove, update } from "@/lib/db";
 
 /**
  * POST /api/inventory/merge
@@ -38,3 +38,4 @@ export async function POST(req) {
     }
   });
 }
+

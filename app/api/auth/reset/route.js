@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 import { fail, ok, readBody } from "@/lib/api";
-import { findOne, update } from "@/lib/google/sheets";
+import { findOne, update } from "@/lib/db";
 
 export async function POST(req) {
   const { email, token, password } = await readBody(req);
@@ -19,3 +19,4 @@ export async function POST(req) {
   });
   return ok({ reset: true });
 }
+

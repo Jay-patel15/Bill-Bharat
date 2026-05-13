@@ -1,6 +1,6 @@
 import { fail, ok, readBody, withUser } from "@/lib/api";
 import { assertCompanyAccess, getCompanyIdFromRequest } from "@/lib/db";
-import { findById, findWhere, insert } from "@/lib/google/sheets";
+import { findById, findWhere, insert } from "@/lib/db";
 
 function computeContractValue(boqItems = []) {
   return boqItems.reduce((sum, it) => {
@@ -63,3 +63,4 @@ export async function POST(req) {
     } catch (e) { return fail(e.message, e.status || 500); }
   });
 }
+

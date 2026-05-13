@@ -1,7 +1,7 @@
 import * as XLSX from "xlsx";
 import { fail, withUser } from "@/lib/api";
 import { assertCompanyAccess, getCompanyIdFromRequest } from "@/lib/db";
-import { findWhere } from "@/lib/google/sheets";
+import { findWhere } from "@/lib/db";
 
 const TYPES = {
   sales: { table: "sales", filename: "sales-report.xlsx" },
@@ -43,3 +43,4 @@ export async function GET(req) {
     } catch (e) { return fail(e.message, e.status || 500); }
   });
 }
+

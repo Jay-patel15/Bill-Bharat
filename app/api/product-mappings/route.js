@@ -1,6 +1,6 @@
 import { fail, ok, readBody, withUser } from "@/lib/api";
 import { assertCompanyAccess, getCompanyIdFromRequest } from "@/lib/db";
-import { findWhere, insert } from "@/lib/google/sheets";
+import { findWhere, insert } from "@/lib/db";
 
 export async function GET(req) {
   return withUser(async (user) => {
@@ -25,3 +25,4 @@ export async function POST(req) {
     return ok(created);
   });
 }
+

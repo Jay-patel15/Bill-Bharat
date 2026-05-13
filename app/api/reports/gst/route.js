@@ -1,6 +1,6 @@
 import { fail, ok, withUser } from "@/lib/api";
 import { assertCompanyAccess, getCompanyIdFromRequest } from "@/lib/db";
-import { findWhere } from "@/lib/google/sheets";
+import { findWhere } from "@/lib/db";
 
 export async function GET(req) {
   return withUser(async (user) => {
@@ -56,3 +56,4 @@ export async function GET(req) {
     } catch (e) { return fail(e.message, e.status || 500); }
   });
 }
+
