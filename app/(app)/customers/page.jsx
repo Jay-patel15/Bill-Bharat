@@ -140,47 +140,40 @@ export default function CustomersPage() {
             const invested = customerPurchases.reduce((sum, p) => sum + Number(p.total || 0), 0);
 
             return (
-              <Card key={c.id} className="flex flex-col hover:border-primary/50 transition-colors shadow-sm">
-                <CardHeader className="p-4 pb-3 border-b bg-muted/10">
-                  <div className="flex justify-between items-start gap-2">
-                    <div className="min-w-0">
-                      <Link href={`/customers/${c.id}`} className="font-semibold text-base hover:underline decoration-primary underline-offset-4 truncate block">
-                        {c.name}
-                      </Link>
-                      <div className="text-[11px] text-muted-foreground mt-1 space-y-0.5">
-                        {c.phone && <div className="truncate">📞 {c.phone}</div>}
-                        {c.gstNumber && <div className="truncate">📝 {c.gstNumber}</div>}
-                        {!c.phone && !c.gstNumber && <div className="italic">No contact info</div>}
+              <Link key={c.id} href={`/customers/${c.id}`} className="block group">
+                <Card className="flex flex-col hover:border-primary/60 hover:shadow-md transition-all shadow-sm cursor-pointer">
+                  <CardHeader className="p-4 pb-3 border-b bg-muted/10">
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-base truncate group-hover:text-primary transition-colors">{c.name}</p>
+                        <div className="text-[11px] text-muted-foreground mt-1 space-y-0.5">
+                          {c.phone && <div className="truncate">📞 {c.phone}</div>}
+                          {c.gstNumber && <div className="truncate">📝 {c.gstNumber}</div>}
+                          {!c.phone && !c.gstNumber && <div className="italic">No contact info</div>}
+                        </div>
+                      </div>
+                      <div className="flex gap-1 shrink-0">
+                        <Button size="icon" variant="ghost" onClick={(e) => { e.preventDefault(); startEdit(c); }} className="h-7 w-7"><Pencil className="h-3.5 w-3.5" /></Button>
+                        <Button size="icon" variant="ghost" onClick={(e) => { e.preventDefault(); onDelete(c); }} className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" /></Button>
                       </div>
                     </div>
-                    <div className="flex gap-1 shrink-0">
-                      <Button size="icon" variant="ghost" onClick={() => startEdit(c)} className="h-7 w-7"><Pencil className="h-3.5 w-3.5" /></Button>
-                      <Button size="icon" variant="ghost" onClick={() => onDelete(c)} className="h-7 w-7 text-red-500 hover:text-red-700 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" /></Button>
+                  </CardHeader>
+                  <CardContent className="p-4 flex-1 flex flex-col gap-3">
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-muted-foreground">Billed</span>
+                      <span className="font-medium text-foreground">{formatINR(billed)}</span>
                     </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-4 flex-1 flex flex-col gap-3">
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-muted-foreground">Billed</span>
-                    <span className="font-medium text-foreground">{formatINR(billed)}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-muted-foreground">Received</span>
-                    <span className="font-medium text-emerald-600">{formatINR(received)}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-muted-foreground">Invested</span>
-                    <span className="font-medium text-amber-600">{formatINR(invested)}</span>
-                  </div>
-                  <div className="mt-auto pt-3">
-                    <Link href={`/customers/${c.id}`} className="w-full">
-                      <Button variant="outline" className="w-full h-8 text-xs bg-muted/30 hover:bg-muted/50">
-                        <FileText className="h-3.5 w-3.5 mr-1.5" /> View Ledger
-                      </Button>
-                    </Link>
-                  </div>
-                </CardContent>
-              </Card>
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-muted-foreground">Received</span>
+                      <span className="font-medium text-emerald-600">{formatINR(received)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-muted-foreground">Invested</span>
+                      <span className="font-medium text-amber-600">{formatINR(invested)}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
             );
           })
         )}

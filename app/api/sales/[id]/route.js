@@ -11,7 +11,12 @@ async function loadSale(user, id) {
 
 export async function GET(_req, { params }) {
   return withUser(async (user) => {
-    try { return ok(await loadSale(user, params.id)); }
+    try {
+      const { findWhere } = await import("@/lib/google/sheets");
+      const sale = await loadSale(user, params.id);
+      const payments = await findWhere("payments", (p) => p.refId === sale.id && p.type === "SALE");
+      return ok({ ...sale, payments: (payments || []).sort((a, b) => new Date(b.date) - new Date(a.date)) });
+    }
     catch (e) { return fail(e.message, e.status || 500); }
   });
 }
@@ -38,8 +43,21 @@ export async function PUT(req, { params }) {
         const customer = await findById("customers", sale.customerId);
         if (customer) {
           const diff = patch.amountPaid - Number(sale.amountPaid || 0);
-          const newOut = Math.max(0, Number(customer.outstanding || 0) - diff);
-          await update("customers", customer.id, { outstanding: newOut });
+          if (diff !== 0) {
+            const { insert } = await import("@/lib/google/sheets");
+            await insert("payments", {
+              companyId: sale.companyId,
+              type: "SALE",
+              refId: sale.id,
+              amount: diff,
+              method: body.paymentMethod || "Cash",
+              date: new Date().toISOString(),
+              notes: body.notes || `Payment for ${sale.invoiceNumber}`
+            });
+
+            const newOut = Math.max(0, Number(customer.outstanding || 0) - diff);
+            await update("customers", customer.id, { outstanding: newOut });
+          }
         }
       }
 

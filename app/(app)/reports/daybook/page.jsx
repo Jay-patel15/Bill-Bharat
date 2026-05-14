@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useCompany, api } from "@/components/company-context";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { formatINR } from "@/lib/utils";
 import { format } from "date-fns";
 
@@ -32,6 +33,21 @@ export default function DayBookPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Accounting Day Book</h1>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={async () => {
+            try {
+              const res = await api("/api/reports/daybook/sync", { method: "POST" });
+              alert(`Sync Complete: ${res.synced?.length || 0} invoices synced.`);
+              loadDayBook();
+            } catch (e) {
+              alert(e.message);
+            }
+          }}
+        >
+          Sync Missing Entries
+        </Button>
       </div>
 
       <Card>

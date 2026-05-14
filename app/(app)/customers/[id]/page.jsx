@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, FileDown, Eye, Plus } from "lucide-react";
+import { ArrowLeft, FileDown, Plus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { api, useCompany } from "@/components/company-context";
 import { useToast } from "@/components/ui/toast";
-import { formatINR, formatDate, STATES, DOCUMENT_TYPES } from "@/lib/utils";
+import { formatINR, formatDate, diffDays, STATES, DOCUMENT_TYPES } from "@/lib/utils";
 
 export default function CustomerDetailPage({ params }) {
   const router = useRouter();
@@ -146,7 +146,7 @@ export default function CustomerDetailPage({ params }) {
             <CardContent className="space-y-1 text-sm">
               <Row label="GSTIN" value={customer.gstNumber || "—"} />
               <Row label="Credit limit" value={formatINR(customer.creditLimit || 0)} />
-              <Row label="Outstanding" value={formatINR(customer.outstanding || 0)} />
+              <Row label="Outstanding" value={formatINR(stats.outstanding)} />
             </CardContent>
           </Card>
         </div>
@@ -174,21 +174,40 @@ export default function CustomerDetailPage({ params }) {
               <THead><TR>
                 <TH>Number</TH><TH>Type</TH><TH>Date</TH>
                 <TH className="text-right">Total</TH><TH className="text-right">Paid</TH>
+                <TH className="text-center">Days</TH>
                 <TH>Status</TH><TH />
               </TR></THead>
               <TBody>
                 {filtered.map((s) => (
-                  <TR key={s.id}>
-                    <TD className="font-medium">{s.invoiceNumber}</TD>
-                    <TD><Badge variant="outline">{s.documentType || "Tax Invoice"}</Badge></TD>
-                    <TD>{formatDate(s.invoiceDate)}</TD>
-                    <TD className="text-right font-semibold">{formatINR(s.total)}</TD>
-                    <TD className="text-right">{formatINR(s.amountPaid)}</TD>
-                    <TD><StatusBadge status={s.status} /></TD>
-                    <TD className="text-right space-x-1">
-                      <Link href={`/sales/${s.id}`}><Button size="sm" variant="outline"><Eye className="h-3.5 w-3.5" /></Button></Link>
-                      <a href={`/api/sales/${s.id}/pdf`} target="_blank" rel="noreferrer">
-                        <Button size="sm" variant="outline"><FileDown className="h-3.5 w-3.5" /></Button>
+                  <TR 
+                    key={s.id} 
+                    className="cursor-pointer hover:bg-muted/50 transition-colors group"
+                  >
+                    <TD className="font-medium" onClick={() => router.push(`/sales/${s.id}`)}>{s.invoiceNumber}</TD>
+                    <TD onClick={() => router.push(`/sales/${s.id}`)}><Badge variant="outline">{s.documentType || "Tax Invoice"}</Badge></TD>
+                    <TD onClick={() => router.push(`/sales/${s.id}`)}>{formatDate(s.invoiceDate)}</TD>
+                    <TD className="text-right font-semibold" onClick={() => router.push(`/sales/${s.id}`)}>{formatINR(s.total)}</TD>
+                    <TD className="text-right" onClick={() => router.push(`/sales/${s.id}`)}>{formatINR(s.amountPaid)}</TD>
+                    <TD className="text-center text-xs font-mono" onClick={() => router.push(`/sales/${s.id}`)}>
+                      {(() => {
+                        const days = s.status === "Paid" ? diffDays(s.invoiceDate, s.updatedAt) : diffDays(s.invoiceDate);
+                        const color = s.status === "Paid" ? "text-muted-foreground" : days > 30 ? "text-destructive font-bold" : days > 15 ? "text-amber-600 font-semibold" : "text-muted-foreground";
+                        return <span className={color}>{days} d</span>;
+                      })()}
+                    </TD>
+                    <TD onClick={() => router.push(`/sales/${s.id}`)}><StatusBadge status={s.status} /></TD>
+                    <TD className="text-right">
+                      <a 
+                        href={`/api/sales/${s.id}/pdf`} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        title="Download Invoice PDF"
+                      >
+                        <Button size="sm" variant="outline" className="gap-1.5 px-4">
+                          <FileDown className="h-3.5 w-3.5" />
+                          <span>Download PDF</span>
+                        </Button>
                       </a>
                     </TD>
                   </TR>

@@ -1,7 +1,8 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Plus, FileDown, Eye, ChevronDown } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Plus, FileDown, ChevronDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
@@ -13,9 +14,11 @@ import { NoCompanySelected } from "@/components/empty-state";
 
 export default function SalesPage() {
   const { active } = useCompany();
+  const router = useRouter();
   const [list, setList] = useState([]);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [showCreate, setShowCreate] = useState(false);
 
   useEffect(() => {
@@ -24,9 +27,10 @@ export default function SalesPage() {
 
   const filtered = useMemo(() => list.filter((s) => {
     if (typeFilter !== "all" && (s.documentType || "Tax Invoice") !== typeFilter) return false;
+    if (statusFilter !== "all" && s.status !== statusFilter) return false;
     return [s.invoiceNumber, s.status, s.documentType]
       .some((f) => (f || "").toLowerCase().includes(search.toLowerCase()));
-  }), [list, search, typeFilter]);
+  }), [list, search, typeFilter, statusFilter]);
 
   if (!active) return <NoCompanySelected />;
 
@@ -84,18 +88,26 @@ export default function SalesPage() {
                 {filtered.map((s) => {
                   const tax = Number(s.cgst || 0) + Number(s.sgst || 0) + Number(s.igst || 0);
                   return (
-                    <TR key={s.id}>
-                      <TD className="font-medium">{s.invoiceNumber}</TD>
-                      <TD><Badge variant="outline">{s.documentType || "Tax Invoice"}</Badge></TD>
-                      <TD>{formatDate(s.invoiceDate)}</TD>
-                      <TD className="text-right">{formatINR(s.subtotal)}</TD>
-                      <TD className="text-right">{formatINR(tax)}</TD>
-                      <TD className="text-right font-semibold">{formatINR(s.total)}</TD>
-                      <TD><StatusBadge status={s.status} /></TD>
-                      <TD className="text-right space-x-1">
-                        <Link href={`/sales/${s.id}`}><Button size="sm" variant="outline"><Eye className="h-3.5 w-3.5" /></Button></Link>
-                        <a href={`/api/sales/${s.id}/pdf`} target="_blank" rel="noreferrer">
-                          <Button size="sm" variant="outline"><FileDown className="h-3.5 w-3.5" /></Button>
+                    <TR key={s.id} className="cursor-pointer hover:bg-muted/50 transition-colors">
+                      <TD className="font-medium" onClick={() => router.push(`/sales/${s.id}`)}>{s.invoiceNumber}</TD>
+                      <TD onClick={() => router.push(`/sales/${s.id}`)}><Badge variant="outline">{s.documentType || "Tax Invoice"}</Badge></TD>
+                      <TD onClick={() => router.push(`/sales/${s.id}`)}>{formatDate(s.invoiceDate)}</TD>
+                      <TD className="text-right" onClick={() => router.push(`/sales/${s.id}`)}>{formatINR(s.subtotal)}</TD>
+                      <TD className="text-right" onClick={() => router.push(`/sales/${s.id}`)}>{formatINR(tax)}</TD>
+                      <TD className="text-right font-semibold" onClick={() => router.push(`/sales/${s.id}`)}>{formatINR(s.total)}</TD>
+                      <TD onClick={() => router.push(`/sales/${s.id}`)}><StatusBadge status={s.status} /></TD>
+                      <TD className="text-right">
+                        <a
+                          href={`/api/sales/${s.id}/pdf`}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          title="Download Invoice PDF"
+                        >
+                          <Button size="sm" variant="outline" className="gap-1.5 px-4">
+                            <FileDown className="h-3.5 w-3.5" />
+                            <span>Download PDF</span>
+                          </Button>
                         </a>
                       </TD>
                     </TR>

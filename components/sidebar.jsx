@@ -24,6 +24,22 @@ export function Sidebar({ onLogout }) {
         {NAV.map((item) => {
           const Icon = item.icon;
           const active = item.href === activeHref;
+          
+          if (item.comingSoon) {
+            return (
+              <div
+                key={item.href}
+                className="flex items-center justify-between px-3 py-2 rounded-md text-sm text-muted-foreground/50 cursor-not-allowed select-none"
+              >
+                <div className="flex items-center gap-3">
+                  <Icon className="h-4 w-4 opacity-50" />
+                  {item.label}
+                </div>
+                <span className="text-[9px] font-bold uppercase bg-muted px-1 rounded text-muted-foreground/70">Soon</span>
+              </div>
+            );
+          }
+
           return (
             <Link
               key={item.href}

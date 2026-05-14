@@ -25,6 +25,7 @@ export default function PurchasesPage() {
   const [selectedBill, setSelectedBill] = useState(null);
   const [payAmount, setPayAmount] = useState("");
   const [payMethod, setPayMethod] = useState("Cash");
+  const [payRef, setPayRef] = useState("");
   const [editMode, setEditMode] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -69,11 +70,17 @@ export default function PurchasesPage() {
   const totalGlobalPending = totalGlobalPayable - totalGlobalPaid;
 
   // --- Payment Modal Logic ---
-  function openDetail(p) {
+  async function openDetail(p) {
     setSelectedBill(p);
     setPayAmount("");
     setPayMethod("Cash");
+    setPayRef("");
     setEditMode(false);
+    // Fetch full detail with payments
+    try {
+      const full = await api(`/api/purchases/${p.id}`);
+      setSelectedBill(full);
+    } catch {}
   }
 
   async function handlePayment(closeBill = false) {
@@ -104,11 +111,19 @@ export default function PurchasesPage() {
     try {
       const updated = await api(`/api/purchases/${selectedBill.id}`, {
         method: "PUT",
-        body: JSON.stringify({ amountPaid: newPaid, status: newStatus })
+        body: JSON.stringify({ 
+          amountPaid: newPaid, 
+          status: newStatus,
+          paymentMethod: payMethod,
+          paymentNotes: editMode 
+            ? `Correction to ${formatINR(newPaid)}` 
+            : `Payment of ${formatINR(inputAmount)}${payRef.trim() ? ` | Ref: ${payRef.trim()}` : ""}`
+        })
       });
       setList((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
       setSelectedBill(updated);
       setPayAmount("");
+      setPayRef("");
       setEditMode(false);
     } catch (e) {
       alert(e.message || "Failed to save payment");
@@ -262,13 +277,31 @@ export default function PurchasesPage() {
                     <select
                       className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                       value={payMethod}
-                      onChange={(e) => setPayMethod(e.target.value)}
+                      onChange={(e) => { setPayMethod(e.target.value); setPayRef(""); }}
                     >
-                      {["Cash", "Bank Transfer", "UPI", "Cheque", "NEFT/RTGS"].map((m) => (
+                      {["Cash", "UPI", "NEFT", "RTGS", "Cheque", "Bank Transfer"].map((m) => (
                         <option key={m}>{m}</option>
                       ))}
                     </select>
                   </div>
+                  {payMethod !== "Cash" && payMethod !== "Bank Transfer" && (
+                    <div className="col-span-2">
+                      <label className="text-xs text-muted-foreground mb-1 block">
+                        {payMethod === "Cheque" ? "Cheque Number" :
+                         payMethod === "UPI" ? "UPI Transaction ID" :
+                         "Transaction ID (NEFT/RTGS)"}
+                      </label>
+                      <Input
+                        placeholder={
+                          payMethod === "Cheque" ? "e.g. 004521" :
+                          payMethod === "UPI" ? "e.g. UPI/123456789" :
+                          "e.g. NEFT123456789"
+                        }
+                        value={payRef}
+                        onChange={(e) => setPayRef(e.target.value)}
+                      />
+                    </div>
+                  )}
                 </div>
                 <div className="flex gap-2 pt-1">
                   {editMode ? (
@@ -313,6 +346,35 @@ export default function PurchasesPage() {
                 >
                   ✏️ Edit paid amount
                 </button>
+              </div>
+            )}
+
+            {/* Payment History */}
+            {selectedBill.payments?.length > 0 && (
+              <div className="border rounded-lg overflow-hidden">
+                <div className="bg-muted/30 p-2 border-b text-xs font-semibold uppercase tracking-wider">Payment History</div>
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/20">
+                    <tr>
+                      <th className="text-left p-2 font-medium">Date</th>
+                      <th className="text-left p-2 font-medium">Method</th>
+                      <th className="text-right p-2 font-medium">Amount</th>
+                      <th className="text-left p-2 font-medium">Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedBill.payments.map((pay, i) => (
+                      <tr key={i} className="border-t">
+                        <td className="p-2 text-muted-foreground">{formatDate(pay.date)}</td>
+                        <td className="p-2">{pay.method}</td>
+                        <td className={`p-2 text-right font-medium ${pay.amount > 0 ? "text-red-600" : "text-emerald-600"}`}>
+                          {pay.amount > 0 ? "-" : "+"}{formatINR(Math.abs(pay.amount))}
+                        </td>
+                        <td className="p-2 text-muted-foreground truncate max-w-[200px]" title={pay.notes}>{pay.notes}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>

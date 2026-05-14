@@ -11,7 +11,12 @@ async function loadPurchase(user, id) {
 
 export async function GET(_req, { params }) {
   return withUser(async (user) => {
-    try { return ok(await loadPurchase(user, params.id)); }
+    try {
+      const { findWhere } = await import("@/lib/google/sheets");
+      const p = await loadPurchase(user, params.id);
+      const payments = await findWhere("payments", (pay) => pay.refId === p.id && pay.type === "PURCHASE");
+      return ok({ ...p, payments: (payments || []).sort((a, b) => new Date(b.date) - new Date(a.date)) });
+    }
     catch (e) { return fail(e.message, e.status || 500); }
   });
 }
@@ -19,14 +24,34 @@ export async function GET(_req, { params }) {
 export async function PUT(req, { params }) {
   return withUser(async (user) => {
     try {
-      await loadPurchase(user, params.id);
+      const p = await loadPurchase(user, params.id);
       const body = await readBody(req);
       const allowed = ["status", "amountPaid", "notes", "pdfUrl", "customerId"];
       const patch = {};
       for (const k of allowed) if (body[k] !== undefined) patch[k] = body[k];
       if (patch.amountPaid !== undefined) patch.amountPaid = Number(patch.amountPaid);
+
+      // Record payment if amount changed
+      if (patch.amountPaid !== undefined) {
+        const diff = patch.amountPaid - Number(p.amountPaid || 0);
+        if (diff !== 0) {
+          const { insert } = await import("@/lib/google/sheets");
+          await insert("payments", {
+            companyId: p.companyId,
+            type: "PURCHASE",
+            refId: p.id,
+            amount: diff,
+            method: body.paymentMethod || "Cash",
+            date: new Date().toISOString(),
+            notes: body.paymentNotes || `Payment for bill ${p.billNumber}`
+          });
+        }
+      }
+
       const updated = await update("purchases", params.id, patch);
-      return ok(updated);
+      const { findWhere } = await import("@/lib/google/sheets");
+      const payments = await findWhere("payments", (pay) => pay.refId === p.id && pay.type === "PURCHASE");
+      return ok({ ...updated, payments: (payments || []).sort((a, b) => new Date(b.date) - new Date(a.date)) });
     } catch (e) { return fail(e.message, e.status || 500); }
   });
 }
