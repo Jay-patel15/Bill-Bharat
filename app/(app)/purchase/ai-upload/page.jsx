@@ -32,6 +32,7 @@ export default function AiUploadPage() {
   const [savingDraft, setSavingDraft] = useState(false);
   const [savingFinal, setSavingFinal] = useState(false);
 
+  const [customers, setCustomers] = useState([]);
   const [inventory, setInventory] = useState([]);
   const [productMappings, setProductMappings] = useState([]);
   const [purchases, setPurchases] = useState([]);
