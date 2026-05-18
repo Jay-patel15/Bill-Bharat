@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Plus, Sparkles, CreditCard, CheckCircle2, FileText, Trash2, ArrowLeft, Building2 } from "lucide-react";
+import { Plus, Sparkles, CreditCard, CheckCircle2, FileText, Trash2, ArrowLeft, Building2, FileClock, CheckCheck } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,8 @@ export default function PurchasesPage() {
   const [list, setList] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [search, setSearch] = useState("");
+  const [activeTab, setActiveTab] = useState("suppliers");
+  const [approvingDraft, setApprovingDraft] = useState(null);
   
   // State for the "Personal Dashboard" View
   const [selectedSupplierName, setSelectedSupplierName] = useState(null);
@@ -383,6 +385,22 @@ export default function PurchasesPage() {
     );
   }
 
+  async function handleApproveDraft(draft) {
+    if (!confirm(`Approve draft "${draft.billNumber || 'No Number'}" and add items to inventory?`)) return;
+    setApprovingDraft(draft.id);
+    try {
+      const updated = await api(`/api/purchases/${draft.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ status: "Unpaid", autoCreateInventory: true })
+      });
+      setList((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+    } catch (e) {
+      alert(e.message || "Failed to approve draft");
+    } finally {
+      setApprovingDraft(null);
+    }
+  }
+
   // Render Personal Dashboard if a supplier is selected
   if (selectedSupplierName) {
     const supplierData = suppliersMap.get(selectedSupplierName);
@@ -519,67 +537,97 @@ export default function PurchasesPage() {
         </Card>
       </div>
 
-      {/* Grid Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
-        <h2 className="text-lg font-semibold text-foreground/80">Your Suppliers ({filteredSuppliers.length})</h2>
-        <Input 
-          placeholder="Search supplier, GSTIN…" 
-          value={search} 
-          onChange={(e) => setSearch(e.target.value)} 
-          className="max-w-xs bg-background" 
-        />
+      {/* Tab switcher */}
+      <div className="flex items-center gap-1 border-b">
+        <button onClick={() => setActiveTab("suppliers")} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "suppliers" ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>Suppliers</button>
+        <button onClick={() => setActiveTab("drafts")} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === "drafts" ? "border-amber-500 text-amber-600" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
+          <FileClock className="h-3.5 w-3.5" /> Drafts
+          {list.filter(p => p.status === "Pending").length > 0 && (
+            <span className="inline-flex items-center justify-center h-5 min-w-[20px] rounded-full bg-amber-100 text-amber-700 text-[10px] font-bold px-1">{list.filter(p => p.status === "Pending").length}</span>
+          )}
+        </button>
       </div>
 
-      {/* Suppliers Grid */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {filteredSuppliers.length === 0 ? (
-          <div className="col-span-full text-sm text-muted-foreground p-8 text-center border border-dashed rounded-lg bg-card">
-            No suppliers found. Start by creating a new purchase!
-          </div>
-        ) : (
-          filteredSuppliers.map((s) => (
-            <Card key={s.name} className="flex flex-col hover:border-primary/50 transition-colors shadow-sm">
-              <CardHeader className="p-4 pb-3 border-b bg-muted/10">
-                <div className="flex items-start gap-3">
-                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                    <Building2 className="h-4 w-4 text-primary" />
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="font-semibold text-base truncate" title={s.name}>{s.name}</h3>
-                    <div className="text-[11px] text-muted-foreground mt-0.5 space-y-0.5">
-                      {s.gst ? <div className="truncate">📝 GST: {s.gst}</div> : <div className="italic">No GSTIN</div>}
+      {activeTab === "drafts" ? (
+        <div className="space-y-3">
+          {list.filter(p => p.status === "Pending").length === 0 ? (
+            <div className="text-sm text-muted-foreground p-10 text-center border border-dashed rounded-lg bg-card flex flex-col items-center gap-2">
+              <FileClock className="h-8 w-8 text-muted-foreground/40" />
+              <p>No draft purchases found.</p>
+              <p className="text-xs">Use <strong>AI Purchase Reader</strong> and click &quot;Save Draft&quot; to save a bill for later review.</p>
+            </div>
+          ) : (
+            list.filter(p => p.status === "Pending").map(draft => {
+              const isApproving = approvingDraft === draft.id;
+              return (
+                <div key={draft.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border rounded-lg p-4 bg-amber-50/50 border-amber-200 hover:border-amber-400 transition-colors">
+                  <div className="flex items-start gap-3">
+                    <div className="h-9 w-9 rounded-full bg-amber-100 flex items-center justify-center shrink-0 mt-0.5"><FileClock className="h-4 w-4 text-amber-600" /></div>
+                    <div>
+                      <div className="font-semibold text-sm">{draft.supplierName || "Unknown Supplier"}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                        {draft.billNumber && <span>Bill #{draft.billNumber}</span>}
+                        {draft.billDate && <span>{formatDate(draft.billDate)}</span>}
+                        <span className="font-medium text-amber-700">{formatINR(draft.total || 0)}</span>
+                      </div>
+                      {draft.notes && <div className="text-xs text-muted-foreground mt-1 italic">{draft.notes}</div>}
                     </div>
                   </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 text-xs" disabled={isApproving} onClick={() => handleApproveDraft(draft)}>
+                      {isApproving ? <span className="flex items-center gap-1">⏳ Approving…</span> : <span className="flex items-center gap-1"><CheckCheck className="h-3.5 w-3.5" /> Approve</span>}
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-8 text-xs text-destructive hover:bg-destructive/10" disabled={isApproving}
+                      onClick={async () => {
+                        if (!confirm(`Delete draft "${draft.billNumber || 'No Number'}"?`)) return;
+                        try { await api(`/api/purchases/${draft.id}`, { method: "DELETE" }); setList(prev => prev.filter(p => p.id !== draft.id)); }
+                        catch (e) { alert(e.message); }
+                      }}>
+                      <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete
+                    </Button>
+                  </div>
                 </div>
-              </CardHeader>
-              <CardContent className="p-4 flex-1 flex flex-col gap-3">
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-muted-foreground">Total Billed</span>
-                  <span className="font-medium text-foreground">{formatINR(s.totalBilled)}</span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-muted-foreground">Total Paid</span>
-                  <span className="font-medium text-emerald-600">{formatINR(s.totalPaid)}</span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-muted-foreground">Pending</span>
-                  <span className="font-medium text-red-600">{formatINR(s.totalPending)}</span>
-                </div>
-                <div className="mt-auto pt-3">
-                  <Button 
-                    variant="outline" 
-                    className="w-full h-8 text-xs bg-muted/30 hover:bg-muted/50"
-                    onClick={() => setSelectedSupplierName(s.name)}
-                  >
-                    <FileText className="h-3.5 w-3.5 mr-1.5" /> View Ledger ({s.purchases.length})
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))
-        )}
-      </div>
-      {/* We reuse the exact same Payment Modal here so it can theoretically open from anywhere */}
+              );
+            })
+          )}
+        </div>
+      ) : (
+        <>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+            <h2 className="text-lg font-semibold text-foreground/80">Your Suppliers ({filteredSuppliers.length})</h2>
+            <Input placeholder="Search supplier, GSTIN…" value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs bg-background" />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {filteredSuppliers.length === 0 ? (
+              <div className="col-span-full text-sm text-muted-foreground p-8 text-center border border-dashed rounded-lg bg-card">No suppliers found. Start by creating a new purchase!</div>
+            ) : (
+              filteredSuppliers.map((s) => (
+                <Card key={s.name} className="flex flex-col hover:border-primary/50 transition-colors shadow-sm">
+                  <CardHeader className="p-4 pb-3 border-b bg-muted/10">
+                    <div className="flex items-start gap-3">
+                      <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0"><Building2 className="h-4 w-4 text-primary" /></div>
+                      <div className="min-w-0">
+                        <h3 className="font-semibold text-base truncate" title={s.name}>{s.name}</h3>
+                        <div className="text-[11px] text-muted-foreground mt-0.5">{s.gst ? <div className="truncate">📝 GST: {s.gst}</div> : <div className="italic">No GSTIN</div>}</div>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-4 flex-1 flex flex-col gap-3">
+                    <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground">Total Billed</span><span className="font-medium">{formatINR(s.totalBilled)}</span></div>
+                    <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground">Total Paid</span><span className="font-medium text-emerald-600">{formatINR(s.totalPaid)}</span></div>
+                    <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground">Pending</span><span className="font-medium text-red-600">{formatINR(s.totalPending)}</span></div>
+                    <div className="mt-auto pt-3">
+                      <Button variant="outline" className="w-full h-8 text-xs bg-muted/30 hover:bg-muted/50" onClick={() => setSelectedSupplierName(s.name)}>
+                        <FileText className="h-3.5 w-3.5 mr-1.5" /> View Ledger ({s.purchases.length})
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+        </>
+      )}
       {renderPaymentModal()}
     </div>
   );
