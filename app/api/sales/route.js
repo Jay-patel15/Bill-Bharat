@@ -10,7 +10,7 @@ export async function GET(req) {
     try {
       const companyId = getCompanyIdFromRequest(req);
       await assertCompanyAccess(user, companyId);
-      const sales = await findWhere("sales", (s) => s.companyId === companyId);
+      const sales = await findWhere("sales", { companyId });
       sales.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
       return ok(sales);
     } catch (e) { return fail(e.message, e.status || 500); }
@@ -55,7 +55,7 @@ export async function POST(req) {
 
       // Invoice number — user-supplied or auto-generated using doc-type prefix
       let invoiceNumber = (body.invoiceNumber || "").trim();
-      const allSales = await findWhere("sales", (s) => s.companyId === companyId);
+      const allSales = await findWhere("sales", { companyId });
       if (!invoiceNumber) {
         invoiceNumber = nextInvoiceNumber(allSales.map((s) => s.invoiceNumber), docType.prefix);
       } else {

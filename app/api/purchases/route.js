@@ -8,7 +8,7 @@ export async function GET(req) {
     try {
       const companyId = getCompanyIdFromRequest(req);
       await assertCompanyAccess(user, companyId);
-      const purchases = await findWhere("purchases", (p) => p.companyId === companyId);
+      const purchases = await findWhere("purchases", { companyId });
       purchases.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
       return ok(purchases);
     } catch (e) { return fail(e.message, e.status || 500); }
@@ -70,9 +70,7 @@ export async function POST(req) {
 
         // 1. Handle Product Mapping if realName is different from name
         if (it.realName && it.realName.toLowerCase() !== it.name.toLowerCase()) {
-          const mapping = await findOne("product_mappings", (m) => 
-            m.companyId === companyId && m.realName?.toLowerCase() === it.realName.toLowerCase()
-          );
+          const mapping = await findOne("product_mappings", { companyId, realName: it.realName });
           if (!mapping) {
             await insert("product_mappings", {
               companyId,
@@ -86,8 +84,8 @@ export async function POST(req) {
 
         // 2. Update / Create Inventory
         let inv = null;
-        if (it.sku) inv = await findOne("inventory", (i) => i.companyId === companyId && i.sku === it.sku);
-        if (!inv) inv = await findOne("inventory", (i) => i.companyId === companyId && i.name?.toLowerCase() === it.name.toLowerCase());
+        if (it.sku) inv = await findOne("inventory", { companyId, sku: it.sku });
+        if (!inv) inv = await findOne("inventory", { companyId, name: it.name });
         
         if (inv) {
           await update("inventory", inv.id, {

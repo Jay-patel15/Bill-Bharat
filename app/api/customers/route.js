@@ -7,7 +7,7 @@ export async function GET(req) {
     try {
       const companyId = getCompanyIdFromRequest(req);
       await assertCompanyAccess(user, companyId);
-      const customers = await findWhere("customers", (c) => c.companyId === companyId);
+      const customers = await findWhere("customers", { companyId });
       return ok(customers);
     } catch (e) {
       return fail(e.message, e.status || 500);
