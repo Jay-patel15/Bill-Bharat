@@ -4,7 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 const REPORTS = [
   { href: "/reports/sales", title: "Sales report", desc: "Invoice-level sales with tax breakdown." },
   { href: "/reports/gst", title: "GST report", desc: "GSTR-friendly summary of CGST, SGST, IGST." },
-  { href: "/reports/finance", title: "Finance overview", desc: "Receivables, payables, profit." }
+  { href: "/reports/finance", title: "Finance overview", desc: "Receivables, payables, profit." },
+  { href: "/reports/outstanding", title: "Outstanding dues", desc: "Outstanding dues grouped by customer." }
 ];
 
 export default function ReportsHub() {

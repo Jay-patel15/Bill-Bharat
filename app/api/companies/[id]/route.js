@@ -1,5 +1,5 @@
 import { fail, ok, readBody, withUser } from "@/lib/api";
-import { findById, remove, update } from "@/lib/google/sheets";
+import { findById, remove, update } from "@/lib/db";
 
 export async function GET(_req, { params }) {
   return withUser(async (user) => {

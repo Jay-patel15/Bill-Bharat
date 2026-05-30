@@ -3,7 +3,7 @@ import { findWhere, insert } from "@/lib/db";
 
 export async function GET() {
   return withUser(async (user) => {
-    const companies = await findWhere("companies", (c) => c.userId === user.id);
+    const companies = await findWhere("companies", { userId: user.id });
     return ok(companies);
   });
 }

@@ -54,8 +54,8 @@ export async function POST(req) {
         contractValue: body.contractValue !== undefined && body.contractValue !== ""
           ? Number(body.contractValue)
           : computeContractValue(boqItems),
-        startDate: body.startDate || "",
-        endDate: body.endDate || "",
+        startDate: body.startDate || null,
+        endDate: body.endDate || null,
         status: body.status || "Active",
         notes: body.notes || ""
       });

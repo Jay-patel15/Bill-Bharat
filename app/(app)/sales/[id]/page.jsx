@@ -8,7 +8,7 @@ import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { StatusBadge } from "@/components/ui/badge";
 import { api } from "@/components/company-context";
 import { useToast } from "@/components/ui/toast";
-import { formatINR, formatDate } from "@/lib/utils";
+import { formatINR, formatDate, parseInvoiceNotes } from "@/lib/utils";
 
 export default function InvoiceViewPage({ params }) {
   const toast = useToast();
@@ -23,6 +23,9 @@ export default function InvoiceViewPage({ params }) {
   const [pdfLink, setPdfLink] = useState("");
   const [payments, setPayments] = useState([]);
   const [editingPayment, setEditingPayment] = useState(null);
+
+  const { notes: plainNotes, metadata } = parseInvoiceNotes(sale?.notes || "");
+  const hasMetadata = metadata && Object.keys(metadata).length > 0;
 
   async function load() {
     const s = await api(`/api/sales/${params.id}`);
@@ -390,6 +393,61 @@ export default function InvoiceViewPage({ params }) {
           )}
         </CardContent>
       </Card>
+
+      {hasMetadata && (
+        <Card>
+          <CardHeader><CardTitle>Transport & Consignee Details</CardTitle></CardHeader>
+          <CardContent className="grid gap-6 md:grid-cols-2">
+            <div className="space-y-2 text-sm">
+              <h4 className="font-semibold border-b pb-1 text-muted-foreground uppercase text-[10px] tracking-wider">Dispatch / Transport Info</h4>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 pt-1">
+                <span className="text-muted-foreground">Challan Number:</span>
+                <span className="font-medium">{metadata.challanNumber || "—"}</span>
+                <span className="text-muted-foreground">Challan Date:</span>
+                <span className="font-medium">{formatDate(metadata.challanDate) || "—"}</span>
+                <span className="text-muted-foreground">Payment Terms:</span>
+                <span className="font-medium">{metadata.paymentTerms || "—"}</span>
+                <span className="text-muted-foreground">Order Number:</span>
+                <span className="font-medium">{metadata.orderNumber || "—"}</span>
+                <span className="text-muted-foreground">Order Date:</span>
+                <span className="font-medium">{formatDate(metadata.orderDate) || "—"}</span>
+                <span className="text-muted-foreground">Transporter Name:</span>
+                <span className="font-medium">{metadata.transporter || "—"}</span>
+                <span className="text-muted-foreground">L.R. Number / Date:</span>
+                <span className="font-medium">{[metadata.lrNumber, formatDate(metadata.lrDate)].filter(Boolean).join(" / ") || "—"}</span>
+                <span className="text-muted-foreground">E-way Bill Number:</span>
+                <span className="font-medium">{metadata.ewayNumber || "—"}</span>
+              </div>
+            </div>
+            <div className="space-y-2 text-sm">
+              <h4 className="font-semibold border-b pb-1 text-muted-foreground uppercase text-[10px] tracking-wider">Consignee Info (Ship To)</h4>
+              {metadata.consigneeSameAsBuyer ? (
+                <p className="text-muted-foreground italic text-xs pt-2">Same as Buyer (Bill To)</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2 pt-1">
+                  <span className="text-muted-foreground">Name:</span>
+                  <span className="font-medium">{metadata.consigneeName || "—"}</span>
+                  <span className="text-muted-foreground">Phone:</span>
+                  <span className="font-medium">{metadata.consigneePhone || "—"}</span>
+                  <span className="text-muted-foreground">GSTIN:</span>
+                  <span className="font-medium">{metadata.consigneeGst || "—"}</span>
+                  <span className="text-muted-foreground">State:</span>
+                  <span className="font-medium">{metadata.consigneeState ? `${metadata.consigneeState} (${metadata.consigneeStateCode || ""})` : "—"}</span>
+                  <span className="text-muted-foreground col-span-2 mt-1 border-t pt-1">Address:</span>
+                  <span className="col-span-2 font-medium break-all">{metadata.consigneeAddress || "—"}</span>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {plainNotes && (
+        <Card>
+          <CardHeader><CardTitle>Notes</CardTitle></CardHeader>
+          <CardContent className="text-sm whitespace-pre-wrap">{plainNotes}</CardContent>
+        </Card>
+      )}
     </div>
   );
 }

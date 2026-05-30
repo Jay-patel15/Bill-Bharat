@@ -1,22 +1,24 @@
 import { fail, withUser } from "@/lib/api";
-import { assertCompanyAccess } from "@/lib/db";
-import { findById, update } from "@/lib/google/sheets";
+import { assertCompanyAccess, findById, update } from "@/lib/db";
 import { generateInvoicePdf } from "@/lib/pdf";
 import { uploadFile } from "@/lib/google/drive";
-import { getDocumentType } from "@/lib/utils";
+import { getDocumentType, parseInvoiceNotes } from "@/lib/utils";
 
 export async function GET(req, { params }) {
   return withUser(async (user) => {
     try {
       const sale = await findById("sales", params.id);
       if (!sale) return fail("Not found", 404);
-      const company = await assertCompanyAccess(user, sale.companyId);
+      await assertCompanyAccess(user, sale.companyId);
+      const company = await findById("companies", sale.companyId);
       const customer = await findById("customers", sale.customerId);
       if (!customer) return fail("Customer missing", 400);
 
       const items = typeof sale.items === "string" ? JSON.parse(sale.items || "[]") : (sale.items || []);
       const interstate = Number(sale.igst || 0) > 0;
       const docType = getDocumentType(sale.documentType || "Tax Invoice");
+
+      const { notes: plainNotes, metadata } = parseInvoiceNotes(sale.notes);
 
       const pdfBuffer = generateInvoicePdf({
         company,
@@ -36,7 +38,8 @@ export async function GET(req, { params }) {
           invoiceDiscount: Number(sale.discount),
           roundOff: 0,
           grandTotal: Number(sale.total),
-          notes: sale.notes
+          notes: plainNotes,
+          metadata
         }
       });
 

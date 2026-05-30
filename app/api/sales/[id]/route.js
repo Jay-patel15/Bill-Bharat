@@ -1,6 +1,5 @@
 import { fail, ok, readBody, withUser } from "@/lib/api";
-import { assertCompanyAccess } from "@/lib/db";
-import { findById, remove, update } from "@/lib/google/sheets";
+import { assertCompanyAccess, findById, remove, update } from "@/lib/db";
 
 async function loadSale(user, id) {
   const s = await findById("sales", id);
@@ -12,7 +11,7 @@ async function loadSale(user, id) {
 export async function GET(_req, { params }) {
   return withUser(async (user) => {
     try {
-      const { findWhere } = await import("@/lib/google/sheets");
+      const { findWhere } = await import("@/lib/db");
       const sale = await loadSale(user, params.id);
       const payments = await findWhere("payments", (p) => p.refId === sale.id && p.type === "SALE");
       return ok({ ...sale, payments: (payments || []).sort((a, b) => new Date(b.date) - new Date(a.date)) });
@@ -30,6 +29,7 @@ export async function PUT(req, { params }) {
       const patch = {};
       for (const k of allowed) if (body[k] !== undefined) patch[k] = body[k];
       if (patch.amountPaid !== undefined) patch.amountPaid = Number(patch.amountPaid);
+      if (patch.dueDate !== undefined) patch.dueDate = patch.dueDate || null;
 
       // Recompute status if amountPaid changed without explicit status
       if (patch.amountPaid !== undefined && body.status === undefined) {
@@ -44,7 +44,7 @@ export async function PUT(req, { params }) {
         if (customer) {
           const diff = patch.amountPaid - Number(sale.amountPaid || 0);
           if (diff !== 0) {
-            const { insert } = await import("@/lib/google/sheets");
+            const { insert } = await import("@/lib/db");
             await insert("payments", {
               companyId: sale.companyId,
               type: "SALE",

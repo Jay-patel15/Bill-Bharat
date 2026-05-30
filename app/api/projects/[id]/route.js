@@ -1,6 +1,5 @@
 import { fail, ok, readBody, withUser } from "@/lib/api";
-import { assertCompanyAccess } from "@/lib/db";
-import { findById, remove, update } from "@/lib/google/sheets";
+import { assertCompanyAccess, findById, remove, update } from "@/lib/db";
 
 async function loadProject(user, id) {
   const p = await findById("projects", id);
@@ -35,6 +34,8 @@ export async function PUT(req, { params }) {
         }));
       }
       if (body.contractValue !== undefined) body.contractValue = Number(body.contractValue) || 0;
+      if (body.startDate !== undefined) body.startDate = body.startDate || null;
+      if (body.endDate !== undefined) body.endDate = body.endDate || null;
       const updated = await update("projects", params.id, body);
       return ok(updated);
     } catch (e) { return fail(e.message, e.status || 500); }

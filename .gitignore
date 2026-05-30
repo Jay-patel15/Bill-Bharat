@@ -12,3 +12,6 @@ service-account.json
 # Local dev data
 .data/
 public/uploads/
+
+# Supabase schema — local only, never commit
+supabase_schema.sql

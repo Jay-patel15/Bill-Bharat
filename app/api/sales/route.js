@@ -26,8 +26,8 @@ export async function POST(req) {
       const customer = await findById("customers", body.customerId);
       if (!customer || customer.companyId !== companyId) return fail("Invalid customer", 400);
 
-      let projectId = "";
-      if (body.projectId) {
+      let projectId = null;
+      if (body.projectId && body.projectId !== "null") {
         const project = await findById("projects", body.projectId);
         if (!project || project.companyId !== companyId) return fail("Invalid project", 400);
         if (project.customerId && project.customerId !== body.customerId) {
@@ -73,7 +73,7 @@ export async function POST(req) {
         documentType: docType.value,
         invoiceNumber,
         invoiceDate: body.invoiceDate || new Date().toISOString().slice(0, 10),
-        dueDate: body.dueDate || "",
+        dueDate: body.dueDate || null,
         items: computed.items,
         subtotal: computed.subtotal,
         discount: computed.invoiceDiscount,

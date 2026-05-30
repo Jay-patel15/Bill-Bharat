@@ -61,7 +61,7 @@ export async function POST(req) {
         status,
         notes: body.notes || "",
         pdfUrl: body.pdfUrl || "",
-        customerId: body.customerId || ""
+        customerId: (body.customerId && body.customerId !== "null") ? body.customerId : null
       });
 
       // Increase inventory: match by sku else by name
