@@ -73,6 +73,11 @@ The project followed a three-phase evolution to reach its current stable state:
     - **What it is**: A one-click tool to export data for the GST Portal.
     - **How to use**: In the **GST Report** page, click **Export GSTR-1 JSON**. It generates a government-compatible JSON file that can be directly uploaded to the GST portal for filing.
 
+### 🛒 Checkout & Payments Flow
+- **Manual Payments**: Since this is a B2B invoicing application, it lacks automated online storefront checkout flows (like Stripe/Razorpay) or auto-logout sessions. Payments are entered and tracked manually (supporting Cash, UPI, NEFT, RTGS, Cheque, Bank Transfer).
+- **Automated Stock Deduction ("Inventory Checkout")**: Saving a stock-affecting document (e.g., Tax Invoice or Delivery Challan) automatically decrements the quantities of the sold items in the inventory.
+- **Auto Status & Outstanding Calculations**: The system dynamically updates invoice status (Unpaid, Partially Paid, Paid) and adjusts the customer's outstanding balance as payments are recorded.
+
 ---
 
 ## 3. Supabase Integration Details

@@ -1,0 +1,135 @@
+# ============================================================
+# BillBharat — Docker Compose (Self-Hosted)
+#
+# Services:
+#   billbharat  — Next.js 14 application
+#   postgres    — PostgreSQL 16 database
+#   redis       — Redis 7 cache
+#   minio       — MinIO S3-compatible object storage
+#
+# Network:
+#   platform-network (external) — shared with Nginx Proxy Manager
+#
+# Usage:
+#   1. Copy .env.example → .env and fill in all values
+#   2. docker compose up -d
+#   3. docker compose exec billbharat node scripts/init-db.js  (first run only)
+# ============================================================
+
+services:
+
+  # ----------------------------------------------------------
+  # Next.js Application
+  # ----------------------------------------------------------
+  billbharat:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    env_file:
+      - ../.env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+    networks:
+      - platform-network
+      - internal
+    volumes:
+      - uploads:/app/public/uploads   # fallback local uploads
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+
+  # ----------------------------------------------------------
+  # PostgreSQL 16
+  # ----------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB:       ${POSTGRES_DB:-billbharat_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-billbharat_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Not exposed to host — accessible only via platform-network / internal
+    # To connect from host for debugging: add "ports: - '5432:5432'" temporarily
+
+  # ----------------------------------------------------------
+  # Redis 7
+  # ----------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redis_data:/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------------
+  # MinIO Object Storage
+  # ----------------------------------------------------------
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER:     ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    volumes:
+      - minio_data:/data
+    networks:
+      - internal
+      - platform-network   # expose console via Nginx Proxy Manager (optional)
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    # MinIO API (9000) and Console (9001) are NOT exposed to host.
+    # Route via Nginx Proxy Manager if external access is needed.
+
+# ----------------------------------------------------------
+# Volumes
+# ----------------------------------------------------------
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  minio_data:
+    driver: local
+  uploads:
+    driver: local
+
+# ----------------------------------------------------------
+# Networks
+# ----------------------------------------------------------
+networks:
+  platform-network:
+    external: true   # Shared with Nginx Proxy Manager
+  internal:
+    driver: bridge   # Private service-to-service network
