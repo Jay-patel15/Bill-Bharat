@@ -254,46 +254,42 @@ export default function ProjectDetailPage({ params }) {
             </form>
           </CardContent>
         </Card>
-      ) : (
+      ) : (project.boqItems || []).length > 0 ? (
         <Card>
           <CardHeader><CardTitle>Bill of Quantities ({(project.boqItems || []).length})</CardTitle></CardHeader>
           <CardContent>
-            {(project.boqItems || []).length === 0 ? (
-              <div className="text-sm text-muted-foreground">No BOQ rows. Click Edit to add scope items.</div>
-            ) : (
-              <Table>
-                <THead>
-                  <TR>
-                    <TH>Item</TH><TH>HSN</TH>
-                    <TH className="text-right">Qty</TH><TH>Unit</TH>
-                    <TH className="text-right">Rate</TH><TH className="text-right">GST%</TH>
-                    <TH className="text-right">Amount</TH>
-                  </TR>
-                </THead>
-                <TBody>
-                  {(project.boqItems || []).map((it, i) => {
-                    const amt = (Number(it.quantity) || 0) * (Number(it.rate) || 0);
-                    return (
-                      <TR key={i}>
-                        <TD>
-                          <div className="font-medium">{it.name}</div>
-                          {it.description ? <div className="text-xs text-muted-foreground">{it.description}</div> : null}
-                        </TD>
-                        <TD>{it.hsnCode || "—"}</TD>
-                        <TD className="text-right">{it.quantity}</TD>
-                        <TD>{it.unit || "—"}</TD>
-                        <TD className="text-right">{formatINR(it.rate)}</TD>
-                        <TD className="text-right">{it.gstRate}%</TD>
-                        <TD className="text-right font-medium">{formatINR(amt)}</TD>
-                      </TR>
-                    );
-                  })}
-                </TBody>
-              </Table>
-            )}
+            <Table>
+              <THead>
+                <TR>
+                  <TH>Item</TH><TH>HSN</TH>
+                  <TH className="text-right">Qty</TH><TH>Unit</TH>
+                  <TH className="text-right">Rate</TH><TH className="text-right">GST%</TH>
+                  <TH className="text-right">Amount</TH>
+                </TR>
+              </THead>
+              <TBody>
+                {(project.boqItems || []).map((it, i) => {
+                  const amt = (Number(it.quantity) || 0) * (Number(it.rate) || 0);
+                  return (
+                    <TR key={i}>
+                      <TD>
+                        <div className="font-medium">{it.name}</div>
+                        {it.description ? <div className="text-xs text-muted-foreground">{it.description}</div> : null}
+                      </TD>
+                      <TD>{it.hsnCode || "—"}</TD>
+                      <TD className="text-right">{it.quantity}</TD>
+                      <TD>{it.unit || "—"}</TD>
+                      <TD className="text-right">{formatINR(it.rate)}</TD>
+                      <TD className="text-right">{it.gstRate}%</TD>
+                      <TD className="text-right font-medium">{formatINR(amt)}</TD>
+                    </TR>
+                  );
+                })}
+              </TBody>
+            </Table>
           </CardContent>
         </Card>
-      )}
+      ) : null}
 
       <Card>
         <CardHeader className="flex-row items-center justify-between">

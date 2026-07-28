@@ -444,52 +444,113 @@ export default function PurchasesPage() {
           </Card>
         </div>
 
-        {/* Supplier Bills Table */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Purchase History</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {supplierPurchases.length === 0 ? (
-              <div className="text-sm text-muted-foreground p-4 text-center border border-dashed rounded-lg">No purchases found.</div>
-            ) : (
-              <Table>
-                <THead>
-                  <TR>
-                    <TH>Bill #</TH>
-                    <TH>Date</TH>
-                    <TH className="text-right">Total</TH>
-                    <TH className="text-right">Paid</TH>
-                    <TH className="text-right">Pending</TH>
-                    <TH>Status</TH>
-                  </TR>
-                </THead>
-                <TBody>
-                  {supplierPurchases.map((p) => {
-                    const pendingAmt = Math.max(0, Number(p.total || 0) - Number(p.amountPaid || 0));
-                    return (
-                      <TR
-                        key={p.id}
-                        className="cursor-pointer hover:bg-muted/50 transition-colors"
-                        onClick={() => openDetail(p)}
-                      >
-                        <TD className="font-mono text-xs">{p.billNumber || "—"}</TD>
-                        <TD>{formatDate(p.billDate)}</TD>
-                        <TD className="text-right font-semibold">{formatINR(p.total)}</TD>
-                        <TD className="text-right text-emerald-600">{formatINR(p.amountPaid || 0)}</TD>
-                        <TD className="text-right font-medium" style={{ color: pendingAmt > 0 ? "var(--destructive, #ef4444)" : "var(--success, #16a34a)" }}>
-                          {formatINR(pendingAmt)}
-                        </TD>
-                        <TD><StatusBadge status={p.status} /></TD>
+        {/* Supplier Passbook Statement (Jama & Udhar) */}
+        {(() => {
+          const supplierTimeline = [];
+          supplierPurchases.forEach(p => {
+            // Purchase Bill (Udhar - We Owe Supplier)
+            supplierTimeline.push({
+              id: `pur-${p.id}`,
+              date: p.billDate || p.createdAt,
+              refNo: p.billNumber || "BILL",
+              particulars: `Purchase Bill from ${p.supplierName}`,
+              udhar: Number(p.total || 0),
+              jama: 0,
+              type: "PURCHASE_BILL"
+            });
+
+            // Payments Paid (Jama - Money Paid Out to Supplier)
+            if (Array.isArray(p.payments) && p.payments.length > 0) {
+              p.payments.forEach(pay => {
+                supplierTimeline.push({
+                  id: `pay-${pay.id}`,
+                  date: pay.date || pay.createdAt,
+                  refNo: p.billNumber || "RECEIPT",
+                  particulars: `Payment Paid (${pay.method || "Cash"}) - ${pay.notes || "Bill Settlement"}`,
+                  udhar: 0,
+                  jama: Math.abs(Number(pay.amount || 0)),
+                  type: "PAYMENT_PAID"
+                });
+              });
+            } else if (Number(p.amountPaid || 0) > 0) {
+              supplierTimeline.push({
+                id: `pay-total-${p.id}`,
+                date: p.billDate || p.createdAt,
+                refNo: p.billNumber || "RECEIPT",
+                particulars: `Payment Paid (${p.paymentMethod || "Cash"})`,
+                udhar: 0,
+                jama: Number(p.amountPaid),
+                type: "PAYMENT_PAID"
+              });
+            }
+          });
+
+          supplierTimeline.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+          let runningPayable = 0;
+          const supplierStatement = supplierTimeline.map(item => {
+            runningPayable += (item.udhar - item.jama);
+            return {
+              ...item,
+              runningBalance: Math.max(0, runningPayable)
+            };
+          }).reverse();
+
+          return (
+            <Card className="border-indigo-100 dark:border-indigo-950">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-indigo-600" /> Supplier Passbook Statement (Jama & Udhar)
+                </CardTitle>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Chronological supplier passbook: Purchase bills received (Udhar / We Owe) vs Payments paid (Jama / Money Out).
+                </p>
+              </CardHeader>
+              <CardContent>
+                {supplierStatement.length === 0 ? (
+                  <div className="text-sm text-muted-foreground p-4 text-center">No supplier transactions recorded yet.</div>
+                ) : (
+                  <Table>
+                    <THead>
+                      <TR>
+                        <TH>Date</TH>
+                        <TH>Type</TH>
+                        <TH>Ref / Bill #</TH>
+                        <TH>Particulars / Description</TH>
+                        <TH className="text-right text-rose-600">Udhar (Dr / Purchase Bill)</TH>
+                        <TH className="text-right text-emerald-600">Jama (Cr / Payment Paid)</TH>
+                        <TH className="text-right">Running Payable Balance</TH>
                       </TR>
-                    );
-                  })}
-                </TBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-        
+                    </THead>
+                    <TBody>
+                      {supplierStatement.map((row, idx) => (
+                        <TR key={idx} className={row.type === "PAYMENT_PAID" ? "bg-emerald-50/30 dark:bg-emerald-950/10 font-medium" : ""}>
+                          <TD className="text-xs">{formatDate(row.date)}</TD>
+                          <TD>
+                            {row.type === "PAYMENT_PAID" && <StatusBadge status="Paid" />}
+                            {row.type === "PURCHASE_BILL" && <StatusBadge status="Unpaid" />}
+                          </TD>
+                          <TD className="font-semibold text-xs">{row.refNo}</TD>
+                          <TD className="text-xs">{row.particulars}</TD>
+                          <TD className="text-right font-semibold text-rose-600 text-xs">
+                            {row.udhar > 0 ? formatINR(row.udhar) : "—"}
+                          </TD>
+                          <TD className="text-right font-semibold text-emerald-600 text-xs">
+                            {row.jama > 0 ? `- ${formatINR(row.jama)}` : "—"}
+                          </TD>
+                          <TD className={`text-right font-bold text-xs ${row.runningBalance > 0 ? "text-amber-600" : "text-emerald-600"}`}>
+                            {formatINR(row.runningBalance)}
+                          </TD>
+                        </TR>
+                      ))}
+                    </TBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })()}
+
         {/* We reuse the exact same Payment Modal here */}
         {renderPaymentModal()}
       </div>
