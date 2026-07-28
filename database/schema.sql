@@ -348,7 +348,10 @@ ALTER TABLE ledger_entries   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE journal_entries  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_logs       ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "users_isolation_policy" ON users FOR ALL USING ((SELECT auth.uid()::text) = id);
+CREATE POLICY "users_insert_policy" ON users FOR INSERT WITH CHECK (true);
+CREATE POLICY "users_isolation_policy" ON users FOR SELECT USING (true);
+CREATE POLICY "users_update_policy" ON users FOR UPDATE USING (true);
+CREATE POLICY "users_delete_policy" ON users FOR DELETE USING ((SELECT auth.uid()::text) = id);
 CREATE POLICY "companies_isolation_policy" ON companies FOR ALL USING ((SELECT auth.uid()::text) = "userId");
 CREATE POLICY "customers_isolation_policy" ON customers FOR ALL USING (EXISTS (SELECT 1 FROM companies WHERE companies.id = customers."companyId" AND companies."userId" = (SELECT auth.uid()::text)));
 CREATE POLICY "inventory_isolation_policy" ON inventory FOR ALL USING (EXISTS (SELECT 1 FROM companies WHERE companies.id = inventory."companyId" AND companies."userId" = (SELECT auth.uid()::text)));
