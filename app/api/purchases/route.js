@@ -50,7 +50,7 @@ export async function POST(req) {
         billDate: data.billDate || new Date().toISOString().slice(0, 10),
         items: (data.items || []).map((it, i) => ({
           ...it,
-          purchasePrice: Number(it.rate || 0),
+          purchasePrice: Number(it.purchasePrice ?? it.rate ?? 0),
           quantity: Number(it.quantity || 0),
           gstRate: Number(it.gstRate || 0),
           taxable: computed.items[i]?.taxable,
