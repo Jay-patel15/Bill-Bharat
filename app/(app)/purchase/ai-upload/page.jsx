@@ -259,8 +259,8 @@ export default function AiUploadPage() {
                 {high ? "High" : med ? "Medium" : "Low"} Confidence Match {confidence}%
               </div>
             </div>
-            <Button size="sm" variant="ghost" onClick={parsePdf} title="Re-extract">
-              <RefreshCw className="h-3.5 w-3.5" />
+            <Button size="sm" variant="ghost" onClick={parsePdf} disabled={parsing} title="Re-extract">
+              <RefreshCw className={`h-3.5 w-3.5 ${parsing ? "animate-spin" : ""}`} />
             </Button>
           </div>
 
