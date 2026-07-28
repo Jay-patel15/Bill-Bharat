@@ -97,7 +97,22 @@ export async function POST(req) {
             gstRate: Number(it.gstRate || 0),
             quantity: Number(it.quantity || 0),
             lowStockThreshold: 0
-          });
+        // Auto-save master product mapping
+        if (it.realName && it.name) {
+          try {
+            const existingMapping = await findOne("product_mappings", (m) => m.companyId === companyId && m.realName.toLowerCase() === it.realName.toLowerCase());
+            if (existingMapping) {
+              await update("product_mappings", existingMapping.id, { systemName: it.name });
+            } else {
+              await insert("product_mappings", {
+                companyId,
+                realName: it.realName,
+                systemName: it.name
+              });
+            }
+          } catch (e) {
+            console.error("Mapping save warning:", e.message);
+          }
         }
       }
 

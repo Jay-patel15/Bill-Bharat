@@ -20,6 +20,25 @@ export async function POST(req) {
       await assertCompanyAccess(user, companyId);
       const body = await readBody(req);
 
+      if (Array.isArray(body.items)) {
+        const created = [];
+        for (const item of body.items) {
+          const realName = typeof item === "string" ? item : item.realName;
+          const systemName = typeof item === "string" ? item : (item.systemName || item.realName);
+          if (!realName || !realName.trim()) continue;
+          const parse = productMappingSchema.safeParse({
+            companyId,
+            realName: realName.trim(),
+            systemName: systemName.trim()
+          });
+          if (parse.success) {
+            const c = await insert("product_mappings", parse.data);
+            created.push(c);
+          }
+        }
+        return ok(created);
+      }
+
       const parse = productMappingSchema.safeParse({ ...body, companyId });
       if (!parse.success) {
         return fail(parse.error.errors[0]?.message || "Invalid payload", 400);

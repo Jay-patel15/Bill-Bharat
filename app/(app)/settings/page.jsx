@@ -1,10 +1,11 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Settings, Loader2, Upload, FileImage, Palette, Type, Eye, Save, X, Sparkles } from "lucide-react";
+import { Plus, Trash2, Settings, Loader2, Upload, FileImage, Palette, Type, Eye, Save, X, Sparkles, FileSpreadsheet, AlignLeft } from "lucide-react";
+import * as XLSX from "xlsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input, Textarea } from "@/components/ui/input";
 import { api, useCompany } from "@/components/company-context";
 import { NoCompanySelected } from "@/components/empty-state";
 
@@ -38,23 +39,23 @@ export default function SettingsPage() {
   const [activeSection, setActiveSection] = useState(null); // null, 'template', or 'products'
   const [mappings, setMappings] = useState([]);
   const [newName, setNewName] = useState("");
+  const [bulkText, setBulkText] = useState("");
+  const [masterTab, setMasterTab] = useState("single"); // "single", "bulk", "csv"
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // --- Invoice Template state ---
-  const [templateImg, setTemplateImg] = useState(null); // base64 preview of uploaded reference bill
+  const [templateImg, setTemplateImg] = useState(null);
   const [templateSaving, setTemplateSaving] = useState(false);
   const [templateSaved, setTemplateSaved] = useState(false);
   const [globalFont, setGlobalFont] = useState("Inter, sans-serif");
   const [showPreview, setShowPreview] = useState(false);
 
-  // Per-word name styling — splits company name into words
   const companyName = active?.name || "";
   const words = companyName.split(/\s+/).filter(Boolean);
 
   const [wordStyles, setWordStyles] = useState({});
 
-  // Load saved template from company profile
   useEffect(() => {
     if (active?.invoiceTemplate) {
       try {
@@ -68,19 +69,24 @@ export default function SettingsPage() {
     }
   }, [active?.id]);
 
-  useEffect(() => {
-    if (active?.id) {
-      setLoading(true);
-      api("/api/product-mappings")
-        .then(setMappings)
-        .catch(() => setMappings([]))
-        .finally(() => setLoading(false));
+  async function loadMappings() {
+    if (!active?.id) return;
+    setLoading(true);
+    try {
+      setMappings(await api("/api/product-mappings") || []);
+    } catch {
+      setMappings([]);
+    } finally {
+      setLoading(false);
     }
+  }
+
+  useEffect(() => {
+    loadMappings();
   }, [active?.id]);
 
   if (!active) return <NoCompanySelected />;
 
-  // --- Word style helpers ---
   function getWordStyle(word) {
     return wordStyles[word] || defaultWordStyle();
   }
@@ -98,7 +104,6 @@ export default function SettingsPage() {
     });
   }
 
-  // --- Reference bill upload ---
   function handleBillUpload(e) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -107,7 +112,6 @@ export default function SettingsPage() {
     reader.readAsDataURL(file);
   }
 
-  // --- Save template settings ---
   async function saveTemplate() {
     setTemplateSaving(true);
     setTemplateSaved(false);
@@ -133,23 +137,91 @@ export default function SettingsPage() {
     }
   }
 
-  // --- Product mappings ---
+  // --- Product Mappings Actions ---
   async function handleAdd(e) {
     e.preventDefault();
     if (!newName.trim()) return;
     setSaving(true);
     try {
-      const added = await api("/api/product-mappings", {
+      await api("/api/product-mappings", {
         method: "POST",
         body: JSON.stringify({ realName: newName.trim() })
       });
-      setMappings((prev) => [...prev, added]);
       setNewName("");
+      await loadMappings();
     } catch (err) {
-      alert(err.message || "Failed to add mapping");
+      alert(err.message || "Failed to add name");
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleBulkAdd(e) {
+    e.preventDefault();
+    const lines = bulkText.split("\n").map(l => l.trim()).filter(Boolean);
+    if (lines.length === 0) return;
+    setSaving(true);
+    try {
+      await api("/api/product-mappings", {
+        method: "POST",
+        body: JSON.stringify({ items: lines })
+      });
+      setBulkText("");
+      await loadMappings();
+      alert(`Successfully added ${lines.length} master product names!`);
+    } catch (err) {
+      alert(err.message || "Failed to add bulk items");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleCsvUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setSaving(true);
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      try {
+        const data = new Uint8Array(ev.target.result);
+        const workbook = XLSX.read(data, { type: "array" });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonRows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        
+        const names = [];
+        jsonRows.forEach(row => {
+          if (Array.isArray(row)) {
+            row.forEach(val => {
+              if (val && typeof val === "string" && val.trim().length > 1) {
+                names.push(val.trim());
+              }
+            });
+          }
+        });
+
+        const uniqueNames = Array.from(new Set(names));
+        if (uniqueNames.length === 0) {
+          alert("No valid product names found in file.");
+          setSaving(false);
+          return;
+        }
+
+        await api("/api/product-mappings", {
+          method: "POST",
+          body: JSON.stringify({ items: uniqueNames })
+        });
+
+        await loadMappings();
+        alert(`Successfully imported ${uniqueNames.length} master names from ${file.name}!`);
+      } catch (err) {
+        alert("Failed to parse CSV/Excel file: " + err.message);
+      } finally {
+        setSaving(false);
+        e.target.value = null;
+      }
+    };
+    reader.readAsArrayBuffer(file);
   }
 
   async function handleDelete(id) {
@@ -162,7 +234,6 @@ export default function SettingsPage() {
     }
   }
 
-  // --- Live header preview ---
   function HeaderPreview() {
     return (
       <div className="rounded-lg border bg-white p-6 shadow-sm" style={{ fontFamily: globalFont }}>
@@ -208,7 +279,6 @@ export default function SettingsPage() {
           </div>
 
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {/* Card 1: Invoice Template Designer */}
             <Card
               className="hover:border-primary/50 cursor-pointer transition-all hover:shadow-md border-2 border-transparent bg-card group"
               onClick={() => setActiveSection("template")}
@@ -224,7 +294,7 @@ export default function SettingsPage() {
               </CardHeader>
               <CardContent className="pt-4">
                 <p className="text-sm text-muted-foreground">
-                  Upload template bill formats, set your favorite font styles, and configure per-word styling of your company name (like size, color, weight) to build the perfect bill.
+                  Upload template bill formats, set your favorite font styles, and configure per-word styling of your company name to build the perfect bill.
                 </p>
                 <div className="mt-4 text-xs font-semibold text-primary group-hover:underline">
                   Configure Template &rarr;
@@ -232,7 +302,6 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
 
-            {/* Card 2: Product Master Names */}
             <Card
               className="hover:border-primary/50 cursor-pointer transition-all hover:shadow-md border-2 border-transparent bg-card group"
               onClick={() => setActiveSection("products")}
@@ -243,12 +312,12 @@ export default function SettingsPage() {
                 </div>
                 <div>
                   <CardTitle className="text-lg font-bold">Product Master Names</CardTitle>
-                  <p className="text-xs text-muted-foreground mt-0.5">Define master mapping names to keep inventory clean.</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Upload or type master product list via CSV / Manual entry.</p>
                 </div>
               </CardHeader>
               <CardContent className="pt-4">
                 <p className="text-sm text-muted-foreground">
-                  Prevent duplicates during invoice uploads. Link vendor item names to standard names (e.g. "Cement 50kg") and manage your product catalogue settings.
+                  Prevent duplicates during AI invoice uploads. Upload CSV files or paste item names to create your master product catalogue.
                 </p>
                 <div className="mt-4 text-xs font-semibold text-primary group-hover:underline">
                   Manage Product Master &rarr;
@@ -256,7 +325,6 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
 
-            {/* Card 3: AI Sales Invoice Generator */}
             <Card
               className="hover:border-primary/50 cursor-pointer transition-all hover:shadow-md border-2 border-transparent bg-card group"
               onClick={() => router.push("/sales/ai-upload")}
@@ -272,7 +340,7 @@ export default function SettingsPage() {
               </CardHeader>
               <CardContent className="pt-4">
                 <p className="text-sm text-muted-foreground">
-                  Upload any reference bill or existing invoice (PDF or Image). Gemini AI will extract customer details and item grids, map missing records on the fly, and pre-fill the invoice form.
+                  Upload any reference bill or existing invoice (PDF or Image). Gemini AI will extract customer details and item grids.
                 </p>
                 <div className="mt-4 text-xs font-semibold text-primary group-hover:underline">
                   Launch AI Generator &rarr;
@@ -296,29 +364,19 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* ═══════════════ INVOICE TEMPLATE DESIGNER ═══════════════ */}
           <Card className="border-2 border-primary/20">
             <CardHeader className="bg-primary/5 rounded-t-lg border-b">
               <CardTitle className="flex items-center gap-2 text-lg">
                 <Palette className="h-5 w-5 text-primary" />
                 Invoice Template Designer
               </CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Customize how your PDF invoices look — upload a reference bill (e.g. from Tally) to match its style,
-                choose fonts, and style each word of your company name individually.
-              </p>
             </CardHeader>
             <CardContent className="p-6 space-y-8">
-              {/* ─── 1. Reference Bill Upload ─── */}
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <FileImage className="h-4 w-4 text-primary" />
                   <h3 className="font-semibold text-sm">Reference Bill (Optional)</h3>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Upload a bill generated by Tally or your current software. This serves as a visual reference
-                  to replicate the layout in your PDF invoices.
-                </p>
                 <div className="flex items-start gap-4">
                   <label className="flex flex-col items-center justify-center w-40 h-32 border-2 border-dashed rounded-lg cursor-pointer hover:bg-muted/40 transition-colors">
                     <Upload className="h-6 w-6 text-muted-foreground mb-1" />
@@ -329,15 +387,8 @@ export default function SettingsPage() {
                   </label>
                   {templateImg && (
                     <div className="relative">
-                      <img
-                        src={templateImg}
-                        alt="Reference bill"
-                        className="h-32 rounded-lg border object-contain bg-gray-50"
-                      />
-                      <button
-                        onClick={() => setTemplateImg(null)}
-                        className="absolute -top-2 -right-2 h-5 w-5 rounded-full bg-destructive text-white flex items-center justify-center"
-                      >
+                      <img src={templateImg} alt="Reference bill" className="h-32 rounded-lg border object-contain bg-gray-50" />
+                      <button onClick={() => setTemplateImg(null)} className="absolute -top-2 -right-2 h-5 w-5 rounded-full bg-destructive text-white flex items-center justify-center">
                         <X className="h-3 w-3" />
                       </button>
                     </div>
@@ -345,7 +396,6 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              {/* ─── 2. Global Font ─── */}
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <Type className="h-4 w-4 text-primary" />
@@ -357,145 +407,21 @@ export default function SettingsPage() {
                       key={f.value}
                       onClick={() => setGlobalFont(f.value)}
                       className={`rounded-lg border p-3 text-left transition-all ${
-                        globalFont === f.value
-                          ? "border-primary bg-primary/5 ring-1 ring-primary"
-                          : "border-border hover:border-primary/50 hover:bg-muted/40"
+                        globalFont === f.value ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border hover:border-primary/50 hover:bg-muted/40"
                       }`}
                     >
                       <div className="text-xs text-muted-foreground mb-1">{f.label}</div>
-                      <div style={{ fontFamily: f.value }} className="text-sm font-semibold truncate">
-                        Invoice
-                      </div>
+                      <div style={{ fontFamily: f.value }} className="text-sm font-semibold truncate">Invoice</div>
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* ─── 3. Company Name Word Styler ─── */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Palette className="h-4 w-4 text-primary" />
-                  <h3 className="font-semibold text-sm">Company Name Styling</h3>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Your company name is split word-by-word. Set a different size, weight, or color for each word.
-                  For example: <strong>&quot;Siddhi&quot;</strong> can be large & bold, <strong>&quot;Electricals&quot;</strong> can be smaller and colored.
-                </p>
-
-                {words.length === 0 ? (
-                  <p className="text-sm text-muted-foreground italic">No company name set — edit your company profile first.</p>
-                ) : (
-                  <div className="space-y-4">
-                    {words.map((word) => {
-                      const ws = getWordStyle(word);
-                      return (
-                        <div key={word} className="rounded-lg border p-4 space-y-3 bg-muted/20">
-                          <div className="flex items-center justify-between">
-                            <span
-                              className="text-lg font-semibold"
-                              style={{
-                                fontFamily: ws.fontFamily || globalFont,
-                                fontSize: `${ws.fontSize}px`,
-                                fontWeight: ws.fontWeight,
-                                color: ws.color,
-                                fontStyle: ws.italic ? "italic" : "normal",
-                              }}
-                            >
-                              {word}
-                            </span>
-                            <button
-                              onClick={() => resetWordStyle(word)}
-                              className="text-xs text-muted-foreground hover:text-destructive underline"
-                            >
-                              Reset
-                            </button>
-                          </div>
-
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                            {/* Font Family */}
-                            <div className="col-span-2 sm:col-span-3">
-                              <label className="text-[10px] text-muted-foreground uppercase font-semibold block mb-1">Font Family</label>
-                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                                {[{ label: "Same as Invoice", value: "" }, ...FONT_OPTIONS].map(f => (
-                                  <button
-                                    key={f.value}
-                                    onClick={() => setWordStyleField(word, "fontFamily", f.value)}
-                                    className={`rounded border px-2 py-1.5 text-left text-[11px] transition-all ${
-                                      (ws.fontFamily || "") === f.value
-                                        ? "border-primary bg-primary/5 ring-1 ring-primary"
-                                        : "border-border hover:border-primary/40 hover:bg-muted/30"
-                                    }`}
-                                  >
-                                    <div className="text-[10px] text-muted-foreground truncate">{f.label}</div>
-                                    <div style={{ fontFamily: f.value || globalFont }} className="font-semibold truncate">{word}</div>
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-
-                            {/* Font Size */}
-                            <div>
-                              <label className="text-[10px] text-muted-foreground uppercase font-semibold block mb-1">Size (px)</label>
-                              <Input type="number" min={8} max={72} value={ws.fontSize} onChange={e => setWordStyleField(word, "fontSize", e.target.value)} className="h-8 text-sm" />
-                            </div>
-
-                            {/* Font Weight */}
-                            <div>
-                              <label className="text-[10px] text-muted-foreground uppercase font-semibold block mb-1">Weight</label>
-                              <select className="w-full h-8 rounded-md border border-input bg-background px-2 text-sm" value={ws.fontWeight} onChange={e => setWordStyleField(word, "fontWeight", e.target.value)}>
-                                {FONT_WEIGHTS.map(fw => <option key={fw.value} value={fw.value}>{fw.label}</option>)}
-                              </select>
-                            </div>
-
-                            {/* Color + Italic */}
-                            <div className="flex gap-2 items-end">
-                              <div className="flex-1">
-                                <label className="text-[10px] text-muted-foreground uppercase font-semibold block mb-1">Color</label>
-                                <div className="flex items-center gap-1 h-8">
-                                  <input type="color" value={ws.color} onChange={e => setWordStyleField(word, "color", e.target.value)} className="h-8 w-10 rounded border border-input cursor-pointer" />
-                                  <span className="text-xs font-mono text-muted-foreground">{ws.color}</span>
-                                </div>
-                              </div>
-                              <div>
-                                <label className="text-[10px] text-muted-foreground uppercase font-semibold block mb-1">Italic</label>
-                                <button onClick={() => setWordStyleField(word, "italic", !ws.italic)} className={`h-8 px-3 rounded-md border text-sm transition-colors ${ws.italic ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-muted/40"}`}>
-                                  <em>I</em>
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* ─── 4. Live Preview ─── */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Eye className="h-4 w-4 text-primary" />
-                    <h3 className="font-semibold text-sm">Live Preview</h3>
-                  </div>
-                  <button onClick={() => setShowPreview(p => !p)} className="text-xs text-primary underline">
-                    {showPreview ? "Hide preview" : "Show preview"}
-                  </button>
-                </div>
-                {showPreview && <HeaderPreview />}
-              </div>
-
-              {/* ─── Save ─── */}
               <div className="flex items-center gap-3 pt-2 border-t">
                 <Button onClick={saveTemplate} disabled={templateSaving} className="gap-2">
-                  {templateSaving
-                    ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving…</>
-                    : <><Save className="h-4 w-4" /> Save Template Settings</>
-                  }
+                  {templateSaving ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving…</> : <><Save className="h-4 w-4" /> Save Template Settings</>}
                 </Button>
-                {templateSaved && (
-                  <span className="text-sm text-emerald-600 font-medium">✓ Saved successfully!</span>
-                )}
+                {templateSaved && <span className="text-sm text-emerald-600 font-medium">✓ Saved successfully!</span>}
               </div>
             </CardContent>
           </Card>
@@ -503,10 +429,7 @@ export default function SettingsPage() {
       ) : (
         <div className="space-y-6">
           <div className="flex items-center justify-between">
-            <button
-              onClick={() => setActiveSection(null)}
-              className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
-            >
+            <button onClick={() => setActiveSection(null)} className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors">
               &larr; Back to Settings
             </button>
             <div className="flex items-center gap-2">
@@ -515,43 +438,110 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* ═══════════════ PRODUCT MASTER NAMES ═══════════════ */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Product Master Names</CardTitle>
+              <CardTitle className="text-lg">Product Master Catalogue</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Define the &quot;Real Product Names&quot; here. You can map vendor item names to these master names during AI upload to avoid duplicates.
+                Upload CSV / Excel files or type master product names to auto-link extracted vendor item names during AI upload.
               </p>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <form onSubmit={handleAdd} className="flex gap-2">
-                <Input
-                  placeholder="e.g. Cement 50kg"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  disabled={saving}
-                />
-                <Button type="submit" disabled={saving || !newName.trim()}>
-                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4 mr-1" />}
-                  Add Name
-                </Button>
-              </form>
+            <CardContent className="space-y-6">
+              
+              {/* Method Tabs */}
+              <div className="flex items-center gap-2 border-b pb-2">
+                <button
+                  onClick={() => setMasterTab("single")}
+                  className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${masterTab === "single" ? "bg-primary text-primary-foreground border-primary" : "bg-background text-muted-foreground"}`}
+                >
+                  <Plus className="h-3.5 w-3.5 inline mr-1" />
+                  Single Add
+                </button>
+                <button
+                  onClick={() => setMasterTab("bulk")}
+                  className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${masterTab === "bulk" ? "bg-primary text-primary-foreground border-primary" : "bg-background text-muted-foreground"}`}
+                >
+                  <AlignLeft className="h-3.5 w-3.5 inline mr-1" />
+                  Manual Typing / Copy-Paste
+                </button>
+                <button
+                  onClick={() => setMasterTab("csv")}
+                  className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${masterTab === "csv" ? "bg-primary text-primary-foreground border-primary" : "bg-background text-muted-foreground"}`}
+                >
+                  <FileSpreadsheet className="h-3.5 w-3.5 inline mr-1" />
+                  Upload CSV / Excel File
+                </button>
+              </div>
 
-              <div className="rounded-md border divide-y">
-                {loading ? (
-                  <div className="p-4 text-sm text-center text-muted-foreground">Loading...</div>
-                ) : mappings.length === 0 ? (
-                  <div className="p-4 text-sm text-center text-muted-foreground">No product names added yet.</div>
-                ) : (
-                  mappings.map((m) => (
-                    <div key={m.id} className="flex items-center justify-between p-3 hover:bg-muted/50 transition-colors">
-                      <span className="font-medium">{m.realName}</span>
-                      <Button variant="ghost" size="icon" onClick={() => handleDelete(m.id)}>
-                        <Trash2 className="h-4 w-4 text-muted-foreground hover:text-red-500" />
-                      </Button>
-                    </div>
-                  ))
-                )}
+              {/* 1. Single Add */}
+              {masterTab === "single" && (
+                <form onSubmit={handleAdd} className="flex gap-2">
+                  <Input
+                    placeholder="e.g. 20MM PVC Pipe"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    disabled={saving}
+                  />
+                  <Button type="submit" disabled={saving || !newName.trim()}>
+                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4 mr-1" />}
+                    Add Master Product
+                  </Button>
+                </form>
+              )}
+
+              {/* 2. Manual Typing / Copy Paste */}
+              {masterTab === "bulk" && (
+                <form onSubmit={handleBulkAdd} className="space-y-3">
+                  <label className="text-xs text-muted-foreground block font-medium">
+                    Type or paste product master names (one item per line):
+                  </label>
+                  <Textarea
+                    rows={5}
+                    placeholder={"20MM PVC Pipe\n25MM PVC Pipe\nSolvent Cement 250ml\nJunction Box 20mm"}
+                    value={bulkText}
+                    onChange={(e) => setBulkText(e.target.value)}
+                    disabled={saving}
+                  />
+                  <Button type="submit" disabled={saving || !bulkText.trim()}>
+                    {saving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Plus className="h-4 w-4 mr-1" />}
+                    Bulk Save Master Names
+                  </Button>
+                </form>
+              )}
+
+              {/* 3. CSV / Excel Upload */}
+              {masterTab === "csv" && (
+                <div className="space-y-3">
+                  <label className="text-xs text-muted-foreground block font-medium">
+                    Upload a CSV or Excel spreadsheet containing your master product names list:
+                  </label>
+                  <label className="flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-lg cursor-pointer hover:bg-muted/30 transition-colors">
+                    <FileSpreadsheet className="h-8 w-8 text-primary mb-2" />
+                    <span className="text-sm font-medium">Click to select CSV or Excel (.xlsx) file</span>
+                    <span className="text-xs text-muted-foreground mt-1">Accepts .csv, .xlsx, .xls</span>
+                    <input type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleCsvUpload} disabled={saving} />
+                  </label>
+                </div>
+              )}
+
+              {/* Master list display table */}
+              <div>
+                <div className="text-sm font-semibold mb-2">Master Product Catalogue ({mappings.length})</div>
+                <div className="rounded-md border divide-y max-h-[400px] overflow-y-auto">
+                  {loading ? (
+                    <div className="p-4 text-sm text-center text-muted-foreground">Loading...</div>
+                  ) : mappings.length === 0 ? (
+                    <div className="p-4 text-sm text-center text-muted-foreground">No product master names added yet.</div>
+                  ) : (
+                    mappings.map((m) => (
+                      <div key={m.id} className="flex items-center justify-between p-3 hover:bg-muted/50 transition-colors">
+                        <span className="font-medium text-sm">{m.realName}</span>
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(m.id)}>
+                          <Trash2 className="h-4 w-4 text-muted-foreground hover:text-red-500" />
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
