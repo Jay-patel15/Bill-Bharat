@@ -97,6 +97,9 @@ export async function POST(req) {
             gstRate: Number(it.gstRate || 0),
             quantity: Number(it.quantity || 0),
             lowStockThreshold: 0
+          });
+        }
+
         // Auto-save master product mapping
         if (it.realName && it.name) {
           try {
