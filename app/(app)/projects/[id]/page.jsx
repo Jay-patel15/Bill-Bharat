@@ -182,6 +182,7 @@ export default function ProjectDetailPage({ params }) {
               <THead>
                 <TR>
                   <TH>Date</TH>
+                  <TH>Type</TH>
                   <TH>Ref / Voucher #</TH>
                   <TH>Particulars / Description</TH>
                   <TH className="text-right text-emerald-600">Jama (Cr / Money In)</TH>
@@ -191,14 +192,20 @@ export default function ProjectDetailPage({ params }) {
               </THead>
               <TBody>
                 {statement.map((row, idx) => (
-                  <TR key={idx}>
+                  <TR key={idx} className={row.type === "PAYMENT_RECEIVED" ? "bg-emerald-50/30 dark:bg-emerald-950/10 font-medium" : ""}>
                     <TD className="text-xs">{formatDate(row.date)}</TD>
-                    <TD className="font-medium text-xs">{row.refNo}</TD>
+                    <TD>
+                      {row.type === "PAYMENT_RECEIVED" && <Badge variant="success" className="text-[10px]">Payment In</Badge>}
+                      {row.type === "INVOICE" && <Badge variant="outline" className="text-[10px] bg-sky-50 text-sky-700 border-sky-200">Invoice Billed</Badge>}
+                      {row.type === "PURCHASE" && <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">Purchase</Badge>}
+                      {row.type === "DAYBOOK" && <Badge variant="secondary" className="text-[10px]">Daybook</Badge>}
+                    </TD>
+                    <TD className="font-semibold text-xs">{row.refNo}</TD>
                     <TD className="text-xs">{row.particulars}</TD>
-                    <TD className="text-right font-medium text-emerald-600 text-xs">
+                    <TD className="text-right font-semibold text-emerald-600 text-xs">
                       {row.jama > 0 ? `+ ${formatINR(row.jama)}` : "—"}
                     </TD>
-                    <TD className="text-right font-medium text-rose-600 text-xs">
+                    <TD className="text-right font-semibold text-rose-600 text-xs">
                       {row.udhar > 0 ? `- ${formatINR(row.udhar)}` : "—"}
                     </TD>
                     <TD className={`text-right font-bold text-xs ${row.runningBalance >= 0 ? "text-indigo-700 dark:text-indigo-400" : "text-rose-600"}`}>
