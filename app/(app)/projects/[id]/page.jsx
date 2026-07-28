@@ -160,22 +160,22 @@ export default function ProjectDetailPage({ params }) {
         </CardContent>
       </Card>
 
-      {/* Site Bank Passbook Statement */}
+      {/* Site Passbook Statement (Jama & Udhar) */}
       <Card>
         <CardHeader className="flex-row items-center justify-between">
           <div>
             <CardTitle className="flex items-center gap-2">
-              <BookOpen className="h-5 w-5 text-indigo-600" /> Site Bank Passbook Statement (Jama & Udhar)
+              <BookOpen className="h-5 w-5 text-indigo-600" /> Site Passbook Statement (Jama & Udhar)
             </CardTitle>
             <p className="text-xs text-muted-foreground mt-1">
-              Chronological passbook statement showing Billed/Received (Jama), Expenses Spent (Udhar), and Running Balance.
+              Chronological passbook statement: Invoices billed (Udhar / Customer Due) vs Payments received (Jama / Money In).
             </p>
           </div>
         </CardHeader>
         <CardContent>
           {!statement || statement.length === 0 ? (
             <div className="text-sm text-muted-foreground p-4 text-center">
-              No transactions recorded for this site yet.
+              No invoice or payment transactions recorded for this site yet.
             </div>
           ) : (
             <Table>
@@ -183,11 +183,11 @@ export default function ProjectDetailPage({ params }) {
                 <TR>
                   <TH>Date</TH>
                   <TH>Type</TH>
-                  <TH>Ref / Voucher #</TH>
+                  <TH>Ref / Invoice #</TH>
                   <TH>Particulars / Description</TH>
-                  <TH className="text-right text-emerald-600">Jama (Cr / Money In)</TH>
-                  <TH className="text-right text-rose-600">Udhar (Dr / Money Out)</TH>
-                  <TH className="text-right">Running Site Balance</TH>
+                  <TH className="text-right text-rose-600">Udhar (Dr / Invoice Billed)</TH>
+                  <TH className="text-right text-emerald-600">Jama (Cr / Payment Received)</TH>
+                  <TH className="text-right">Running Customer Due</TH>
                 </TR>
               </THead>
               <TBody>
@@ -195,20 +195,18 @@ export default function ProjectDetailPage({ params }) {
                   <TR key={idx} className={row.type === "PAYMENT_RECEIVED" ? "bg-emerald-50/30 dark:bg-emerald-950/10 font-medium" : ""}>
                     <TD className="text-xs">{formatDate(row.date)}</TD>
                     <TD>
-                      {row.type === "PAYMENT_RECEIVED" && <Badge variant="success" className="text-[10px]">Payment In</Badge>}
-                      {row.type === "INVOICE" && <Badge variant="outline" className="text-[10px] bg-sky-50 text-sky-700 border-sky-200">Invoice Billed</Badge>}
-                      {row.type === "PURCHASE" && <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">Purchase</Badge>}
-                      {row.type === "DAYBOOK" && <Badge variant="secondary" className="text-[10px]">Daybook</Badge>}
+                      {row.type === "PAYMENT_RECEIVED" && <Badge variant="success" className="text-[10px]">Payment In (Jama)</Badge>}
+                      {row.type === "INVOICE" && <Badge variant="outline" className="text-[10px] bg-rose-50 text-rose-700 border-rose-200">Invoice Billed (Udhar)</Badge>}
                     </TD>
                     <TD className="font-semibold text-xs">{row.refNo}</TD>
                     <TD className="text-xs">{row.particulars}</TD>
+                    <TD className="text-right font-semibold text-rose-600 text-xs">
+                      {row.udhar > 0 ? formatINR(row.udhar) : "—"}
+                    </TD>
                     <TD className="text-right font-semibold text-emerald-600 text-xs">
                       {row.jama > 0 ? `+ ${formatINR(row.jama)}` : "—"}
                     </TD>
-                    <TD className="text-right font-semibold text-rose-600 text-xs">
-                      {row.udhar > 0 ? `- ${formatINR(row.udhar)}` : "—"}
-                    </TD>
-                    <TD className={`text-right font-bold text-xs ${row.runningBalance >= 0 ? "text-indigo-700 dark:text-indigo-400" : "text-rose-600"}`}>
+                    <TD className={`text-right font-bold text-xs ${row.runningBalance > 0 ? "text-amber-600" : "text-emerald-600"}`}>
                       {formatINR(row.runningBalance)}
                     </TD>
                   </TR>

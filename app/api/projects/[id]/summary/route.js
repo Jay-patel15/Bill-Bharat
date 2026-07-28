@@ -10,22 +10,7 @@ export async function GET(_req, { params }) {
 
       const customer = await findById("customers", project.customerId);
       const allSales = await findWhere("sales", { companyId: project.companyId, projectId: project.id });
-      const allPurchases = await findWhere("purchases", { companyId: project.companyId });
       const allPayments = await findWhere("payments", { companyId: project.companyId });
-      const allLedger = await findWhere("ledger_entries", { companyId: project.companyId });
-
-      // Filter purchases for this project
-      const sitePurchases = (allPurchases || []).filter((p) => 
-        p.projectId === project.id || 
-        (p.notes && p.notes.toLowerCase().includes(project.name.toLowerCase()))
-      );
-
-      // Filter site-specific ledger entries
-      const siteLedger = (allLedger || []).filter((l) => 
-        l.projectId === project.id || 
-        (l.notes && l.notes.toLowerCase().includes(project.name.toLowerCase())) ||
-        (l.description && l.description.toLowerCase().includes(project.name.toLowerCase()))
-      );
 
       const taxInvoices = allSales.filter((s) => (s.documentType || "Tax Invoice") === "Tax Invoice");
       const salesIds = new Set(taxInvoices.map((s) => s.id));
@@ -43,78 +28,46 @@ export async function GET(_req, { params }) {
       const remaining = Math.max(0, contractValue - billed);
       const overBilled = Math.max(0, billed - contractValue);
 
-      // Total Site Expenses (Udhar) = Purchases + Ledger Expenses
-      const purchaseExpenses = sitePurchases.reduce((t, p) => t + Number(p.total || p.amount || 0), 0);
-      const ledgerExpenses = siteLedger.reduce((t, l) => t + Number(l.debit || 0), 0);
-      const siteUdhar = purchaseExpenses + ledgerExpenses;
-      const siteJama = billed;
-
-      // Construct Complete Passbook Statement Timeline
+      // Construct Customer Site Passbook Statement Timeline (Udhar for Invoices, Jama for Payments)
       const timeline = [];
 
-      // 1. Sales Invoices (Jama - Billed to Customer)
+      // 1. Sales Invoices (Udhar - Customer Debt/Due)
       taxInvoices.forEach((s) => {
         timeline.push({
           id: `inv-${s.id}`,
           date: s.invoiceDate || s.createdAt,
           refNo: s.invoiceNumber,
-          particulars: `Sales Invoice (Billed to ${customer?.name || "Builder"})`,
-          jama: Number(s.total || 0),
-          udhar: 0,
+          particulars: `Sales Invoice Billed to ${customer?.name || "Builder"}`,
+          jama: 0,
+          udhar: Number(s.total || 0),
           type: "INVOICE"
         });
       });
 
-      // 2. Payments Collected (Jama - Cash/Bank Payment Received)
+      // 2. Payments Collected (Jama - Cash/UPI/Bank Received)
       salesPayments.forEach((p) => {
         const inv = taxInvoices.find((s) => s.id === p.refId);
         timeline.push({
           id: `pay-${p.id}`,
           date: p.date || p.createdAt,
           refNo: inv ? inv.invoiceNumber : "RECEIPT",
-          particulars: `Payment Received (${p.method || p.paymentMethod || "Cash/UPI"}) - ${p.notes || "Invoice Payment"}`,
+          particulars: `Payment Received (${p.method || p.paymentMethod || "Cash/UPI"}) - ${p.notes || "Bill Settlement"}`,
           jama: Number(p.amount || 0),
           udhar: 0,
           type: "PAYMENT_RECEIVED"
         });
       });
 
-      // 3. Purchase Bills (Udhar - Material/Services Purchased for Site)
-      sitePurchases.forEach((pur) => {
-        timeline.push({
-          id: `pur-${pur.id}`,
-          date: pur.billDate || pur.createdAt,
-          refNo: pur.billNumber || "PURCHASE-BILL",
-          particulars: `Purchase Bill from ${pur.supplierName || "Vendor"}`,
-          jama: 0,
-          udhar: Number(pur.total || pur.amount || 0),
-          type: "PURCHASE"
-        });
-      });
-
-      // 4. Daybook & Manual Ledger Expenses (Udhar/Jama)
-      siteLedger.forEach((l) => {
-        timeline.push({
-          id: `led-${l.id}`,
-          date: l.date || l.createdAt,
-          refNo: l.voucherNo || "JV-ENTRY",
-          particulars: l.description || l.accountName || "Site Daybook Entry",
-          jama: Number(l.credit || 0),
-          udhar: Number(l.debit || 0),
-          type: "DAYBOOK"
-        });
-      });
-
-      // Sort timeline chronologically (oldest first for accurate running balance)
+      // Sort timeline chronologically (oldest first)
       timeline.sort((a, b) => new Date(a.date) - new Date(b.date));
 
-      // Calculate running balance
-      let balance = 0;
+      // Calculate running customer due balance (Udhar - Jama)
+      let runningDue = 0;
       const statement = timeline.map((item) => {
-        balance += (item.jama - item.udhar);
+        runningDue += (item.udhar - item.jama);
         return {
           ...item,
-          runningBalance: balance
+          runningBalance: Math.max(0, runningDue)
         };
       });
 
@@ -130,10 +83,8 @@ export async function GET(_req, { params }) {
         pending,
         remaining,
         overBilled,
-        siteJama,
-        siteUdhar,
-        netSiteBalance: siteJama - siteUdhar,
-        netCashPosition: collected - siteUdhar,
+        siteJama: collected,
+        siteUdhar: billed,
         billedPercent: contractValue ? Math.min(100, Math.round((billed / contractValue) * 100)) : 0,
         collectedPercent: contractValue ? Math.min(100, Math.round((collected / contractValue) * 100)) : 0,
         invoices: allSales.sort((a, b) => String(b.invoiceDate || "").localeCompare(String(a.invoiceDate || ""))),
