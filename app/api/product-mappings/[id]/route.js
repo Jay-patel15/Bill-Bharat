@@ -1,6 +1,5 @@
 import { fail, ok, withUser } from "@/lib/api";
-import { assertCompanyAccess, getCompanyIdFromRequest } from "@/lib/db";
-import { remove } from "@/lib/google/sheets";
+import { assertCompanyAccess, getCompanyIdFromRequest, remove } from "@/lib/db";
 
 export async function DELETE(req, { params }) {
   return withUser(async (user) => {

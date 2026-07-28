@@ -1,10 +1,7 @@
 -- ============================================================
 --  BillBharat — PostgreSQL Schema
---  For self-hosted deployment (PostgreSQL 14+)
---  Run via: node scripts/init-db.js
---  OR manually: psql $DATABASE_URL -f database/schema.sql
+--  Run this in the Supabase SQL Editor (or via psql $DATABASE_URL -f database/schema.sql)
 --
---  Adapted from supabase_schema.sql:
 --   • All 12 tables, indexes, triggers preserved exactly
 --   • RLS policies REMOVED — access control is enforced
 --     at the application layer (lib/db.js + middleware.js)
@@ -336,7 +333,35 @@ CREATE INDEX IF NOT EXISTS audit_user_idx    ON audit_logs ("userId");
 CREATE INDEX IF NOT EXISTS audit_table_idx   ON audit_logs ("table", "recordId");
 
 -- ==============================================================
--- DONE ✓  12 tables created with indexes & triggers
--- Note: RLS is NOT used — access is enforced at the application
---       layer in lib/db.js and middleware.js
+-- ROW LEVEL SECURITY (Strict Tenant Isolation & Default Deny)
 -- ==============================================================
+ALTER TABLE users            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE companies        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE customers        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE inventory        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE projects         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sales            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE purchases        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE product_mappings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE payments         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ledger_entries   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE journal_entries  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE audit_logs       ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "users_isolation_policy" ON users FOR ALL USING ((SELECT auth.uid()::text) = id);
+CREATE POLICY "companies_isolation_policy" ON companies FOR ALL USING ((SELECT auth.uid()::text) = "userId");
+CREATE POLICY "customers_isolation_policy" ON customers FOR ALL USING (EXISTS (SELECT 1 FROM companies WHERE companies.id = customers."companyId" AND companies."userId" = (SELECT auth.uid()::text)));
+CREATE POLICY "inventory_isolation_policy" ON inventory FOR ALL USING (EXISTS (SELECT 1 FROM companies WHERE companies.id = inventory."companyId" AND companies."userId" = (SELECT auth.uid()::text)));
+CREATE POLICY "projects_isolation_policy" ON projects FOR ALL USING (EXISTS (SELECT 1 FROM companies WHERE companies.id = projects."companyId" AND companies."userId" = (SELECT auth.uid()::text)));
+CREATE POLICY "sales_isolation_policy" ON sales FOR ALL USING (EXISTS (SELECT 1 FROM companies WHERE companies.id = sales."companyId" AND companies."userId" = (SELECT auth.uid()::text)));
+CREATE POLICY "purchases_isolation_policy" ON purchases FOR ALL USING (EXISTS (SELECT 1 FROM companies WHERE companies.id = purchases."companyId" AND companies."userId" = (SELECT auth.uid()::text)));
+CREATE POLICY "product_mappings_isolation_policy" ON product_mappings FOR ALL USING (EXISTS (SELECT 1 FROM companies WHERE companies.id = product_mappings."companyId" AND companies."userId" = (SELECT auth.uid()::text)));
+CREATE POLICY "payments_isolation_policy" ON payments FOR ALL USING (EXISTS (SELECT 1 FROM companies WHERE companies.id = payments."companyId" AND companies."userId" = (SELECT auth.uid()::text)));
+CREATE POLICY "ledger_entries_isolation_policy" ON ledger_entries FOR ALL USING (EXISTS (SELECT 1 FROM companies WHERE companies.id = ledger_entries."companyId" AND companies."userId" = (SELECT auth.uid()::text)));
+CREATE POLICY "journal_entries_isolation_policy" ON journal_entries FOR ALL USING (EXISTS (SELECT 1 FROM companies WHERE companies.id = journal_entries."companyId" AND companies."userId" = (SELECT auth.uid()::text)));
+CREATE POLICY "audit_logs_isolation_policy" ON audit_logs FOR ALL USING ((SELECT auth.uid()::text) = "userId" OR EXISTS (SELECT 1 FROM companies WHERE companies.id = audit_logs."companyId" AND companies."userId" = (SELECT auth.uid()::text)));
+
+-- ==============================================================
+-- DONE ✓  12 tables created with indexes, triggers & strict RLS
+-- ==============================================================
+

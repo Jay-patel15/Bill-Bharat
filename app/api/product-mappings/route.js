@@ -1,28 +1,32 @@
 import { fail, ok, readBody, withUser } from "@/lib/api";
-import { assertCompanyAccess, getCompanyIdFromRequest } from "@/lib/db";
-import { findWhere, insert } from "@/lib/db";
+import { assertCompanyAccess, getCompanyIdFromRequest, findWhere, insert } from "@/lib/db";
+import { productMappingSchema } from "@/lib/validations";
 
 export async function GET(req) {
   return withUser(async (user) => {
-    const companyId = getCompanyIdFromRequest(req);
-    await assertCompanyAccess(user, companyId);
-    const list = await findWhere("product_mappings", (r) => r.companyId === companyId);
-    return ok(list);
+    try {
+      const companyId = getCompanyIdFromRequest(req);
+      await assertCompanyAccess(user, companyId);
+      const list = await findWhere("product_mappings", { companyId });
+      return ok(list);
+    } catch (e) { return fail(e.message, e.status || 500); }
   });
 }
 
 export async function POST(req) {
   return withUser(async (user) => {
-    const companyId = getCompanyIdFromRequest(req);
-    await assertCompanyAccess(user, companyId);
-    const body = await readBody(req);
-    if (!body.realName) return fail("realName required", 400);
+    try {
+      const companyId = getCompanyIdFromRequest(req);
+      await assertCompanyAccess(user, companyId);
+      const body = await readBody(req);
 
-    const created = await insert("product_mappings", {
-      ...body,
-      companyId
-    });
-    return ok(created);
+      const parse = productMappingSchema.safeParse({ ...body, companyId });
+      if (!parse.success) {
+        return fail(parse.error.errors[0]?.message || "Invalid payload", 400);
+      }
+
+      const created = await insert("product_mappings", parse.data);
+      return ok(created);
+    } catch (e) { return fail(e.message, e.status || 500); }
   });
 }
-

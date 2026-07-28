@@ -124,16 +124,21 @@ export default function InvoiceViewPage({ params }) {
 
   async function persistPdf() {
     try {
-      const res = await fetch(`/api/sales/${sale.id}/pdf?save=1`, {
+      toast({ type: "info", title: "Uploading to Google Drive..." });
+      const res = await fetch(`/api/sales/${sale.id}/pdf?save=1&drive=1`, {
         method: "GET", headers: { "x-company-id": sale.companyId }
       });
       const json = await res.json();
       if (json.ok) {
-        setPdfLink(json.data.viewUrl);
-        toast({ type: "success", title: "PDF saved to Drive" });
+        const driveLink = json.pdfUrl || json.data?.viewUrl;
+        setPdfLink(driveLink);
+        toast({ type: "success", title: "Invoice saved to Google Drive!" });
+        if (driveLink) {
+          window.open(driveLink, "_blank");
+        }
         await load();
-      } else throw new Error(json.error);
-    } catch (e) { toast({ type: "error", title: "Could not save PDF", message: e.message }); }
+      } else throw new Error(json.error || "Failed to upload");
+    } catch (e) { toast({ type: "error", title: "Could not save PDF to Drive", message: e.message }); }
   }
 
   function shareWhatsApp() {

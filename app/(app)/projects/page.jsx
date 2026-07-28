@@ -25,10 +25,16 @@ export default function ProjectsPage() {
   const [statusFilter, setStatusFilter] = useState("All");
 
   useEffect(() => {
-    if (!active?.id) { setList([]); return; }
-    api("/api/projects").then(setList).catch(() => setList([]));
-    api("/api/customers").then(setCustomers).catch(() => setCustomers([]));
-    api("/api/sales").then(setSales).catch(() => setSales([]));
+    if (!active?.id) { setList([]); setCustomers([]); setSales([]); return; }
+    Promise.all([
+      api("/api/projects").catch(() => []),
+      api("/api/customers").catch(() => []),
+      api("/api/sales").catch(() => [])
+    ]).then(([pList, cList, sList]) => {
+      setList(pList || []);
+      setCustomers(cList || []);
+      setSales(sList || []);
+    });
   }, [active?.id]);
 
   const enriched = useMemo(() => {

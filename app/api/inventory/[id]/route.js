@@ -1,6 +1,6 @@
 import { fail, ok, readBody, withUser } from "@/lib/api";
-import { assertCompanyAccess } from "@/lib/db";
-import { findById, remove, update } from "@/lib/google/sheets";
+import { assertCompanyAccess, findById, remove, update } from "@/lib/db";
+import { inventorySchema } from "@/lib/validations";
 
 async function loadItem(user, id) {
   const item = await findById("inventory", id);
@@ -22,10 +22,13 @@ export async function PUT(req, { params }) {
       await loadItem(user, params.id);
       const body = await readBody(req);
       delete body.id; delete body.companyId; delete body.createdAt;
-      ["purchasePrice", "sellingPrice", "gstRate", "quantity", "lowStockThreshold"].forEach((k) => {
-        if (body[k] !== undefined) body[k] = Number(body[k]);
-      });
-      const updated = await update("inventory", params.id, body);
+      
+      const parse = inventorySchema.partial().safeParse(body);
+      if (!parse.success) {
+        return fail(parse.error.errors[0]?.message || "Invalid payload", 400);
+      }
+
+      const updated = await update("inventory", params.id, parse.data, user.id);
       return ok(updated);
     } catch (e) { return fail(e.message, e.status || 500); }
   });
@@ -35,7 +38,7 @@ export async function DELETE(_req, { params }) {
   return withUser(async (user) => {
     try {
       await loadItem(user, params.id);
-      await remove("inventory", params.id);
+      await remove("inventory", params.id, user.id);
       return ok({ deleted: true });
     } catch (e) { return fail(e.message, e.status || 500); }
   });

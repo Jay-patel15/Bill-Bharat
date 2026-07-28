@@ -1,6 +1,5 @@
 import { fail, ok, withUser } from "@/lib/api";
-import { assertCompanyAccess } from "@/lib/db";
-import { findById, findWhere } from "@/lib/google/sheets";
+import { assertCompanyAccess, findById, findWhere } from "@/lib/db";
 
 export async function GET(_req, { params }) {
   return withUser(async (user) => {
@@ -10,7 +9,7 @@ export async function GET(_req, { params }) {
       await assertCompanyAccess(user, project.companyId);
 
       const customer = await findById("customers", project.customerId);
-      const allSales = await findWhere("sales", (s) => s.companyId === project.companyId && s.projectId === project.id);
+      const allSales = await findWhere("sales", { companyId: project.companyId, projectId: project.id });
 
       // Only "Tax Invoice" reduces the contract / accrues outstanding;
       // PI/PO/QT are estimates and don't move the financial needle.

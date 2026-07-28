@@ -1,7 +1,7 @@
 import { fail, withUser } from "@/lib/api";
 import { assertCompanyAccess, findById, update } from "@/lib/db";
 import { generateInvoicePdf } from "@/lib/pdf";
-import { uploadFile } from "@/lib/google/drive";
+import { uploadFile } from "@/lib/storage/supabase";
 import { getDocumentType, parseInvoiceNotes } from "@/lib/utils";
 
 export async function GET(req, { params }) {
@@ -14,6 +14,11 @@ export async function GET(req, { params }) {
       const customer = await findById("customers", sale.customerId);
       if (!customer) return fail("Customer missing", 400);
 
+      let project = null;
+      if (sale.projectId) {
+        project = await findById("projects", sale.projectId);
+      }
+
       const items = typeof sale.items === "string" ? JSON.parse(sale.items || "[]") : (sale.items || []);
       const interstate = Number(sale.igst || 0) > 0;
       const docType = getDocumentType(sale.documentType || "Tax Invoice");
@@ -23,12 +28,14 @@ export async function GET(req, { params }) {
       const pdfBuffer = generateInvoicePdf({
         company,
         customer,
+        project,
         title: docType.pdfTitle,
         showTax: docType.value !== "Delivery Challan",
         invoice: {
           invoiceNumber: sale.invoiceNumber,
           invoiceDate: sale.invoiceDate,
           dueDate: sale.dueDate,
+          projectName: project?.name || sale.projectName || metadata?.projectName || "",
           interstate,
           items,
           subtotal: Number(sale.subtotal),
@@ -44,17 +51,25 @@ export async function GET(req, { params }) {
       });
 
       const url = new URL(req.url);
-      const persist = url.searchParams.get("save") === "1";
+      const saveRequested = url.searchParams.get("save") === "1" || url.searchParams.get("drive") === "1";
 
-      if (persist) {
-        const file = await uploadFile({
-          data: pdfBuffer,
-          filename: `${sale.invoiceNumber}.pdf`,
-          mimeType: "application/pdf",
-          subfolder: "invoices"
-        });
-        await update("sales", sale.id, { pdfUrl: file.viewUrl });
-        return new Response(JSON.stringify({ ok: true, data: file }), {
+      let fileUrl = sale.pdfUrl || "";
+
+      if (saveRequested || !sale.pdfUrl) {
+        if (process.env.GOOGLE_DRIVE_FOLDER_ID?.trim() && process.env.GOOGLE_CREDENTIALS_JSON?.trim()) {
+          try {
+            const { uploadToGoogleDrive } = await import("@/lib/storage/drive");
+            const driveFile = await uploadToGoogleDrive(pdfBuffer, `${sale.invoiceNumber}.pdf`, "application/pdf");
+            fileUrl = driveFile.webViewLink;
+            await update("sales", sale.id, { pdfUrl: fileUrl });
+          } catch (driveErr) {
+            console.error("Google Drive upload error:", driveErr.message);
+          }
+        }
+      }
+
+      if (saveRequested) {
+        return new Response(JSON.stringify({ ok: true, pdfUrl: fileUrl, message: "Saved to Google Drive" }), {
           headers: { "content-type": "application/json" }
         });
       }

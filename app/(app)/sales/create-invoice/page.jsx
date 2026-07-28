@@ -98,9 +98,12 @@ export default function CreateInvoicePage() {
 
   // When the user picks a customer, narrow projects to theirs.
   // When they pick a project, lock the customer.
-  const projectsForCustomer = projects.filter((p) =>
-    !customerId || !p.customerId || p.customerId === customerId
-  );
+  const projectsForCustomer = useMemo(() => {
+    if (!projects || projects.length === 0) return [];
+    const matched = projects.filter((p) => !customerId || !p.customerId || p.customerId === customerId);
+    return matched.length > 0 ? matched : projects;
+  }, [projects, customerId]);
+
   const selectedProject = projects.find((p) => p.id === projectId) || null;
   useEffect(() => {
     if (selectedProject && selectedProject.customerId && customerId !== selectedProject.customerId) {
@@ -227,7 +230,7 @@ export default function CreateInvoicePage() {
                 <option value="">— None —</option>
                 {projectsForCustomer.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.name}{p.code ? ` (${p.code})` : ""}
+                    {p.name}
                   </option>
                 ))}
               </Select>

@@ -54,7 +54,7 @@ export function useCompany() {
  * short-circuit instead of round-tripping to the server (which would 400).
  */
 const COMPANY_SCOPED = [
-  "/api/customers", "/api/inventory", "/api/sales", "/api/purchases", "/api/reports"
+  "/api/customers", "/api/inventory", "/api/sales", "/api/purchases", "/api/projects", "/api/reports", "/api/journals", "/api/product-mappings"
 ];
 
 /** Adds the X-Company-Id header automatically. */

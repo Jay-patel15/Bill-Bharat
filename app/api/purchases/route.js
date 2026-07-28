@@ -1,7 +1,8 @@
 import { fail, ok, readBody, withUser } from "@/lib/api";
 import { assertCompanyAccess, getCompanyIdFromRequest } from "@/lib/db";
-import { findById, findOne, findWhere, insert, update } from "@/lib/db";
+import { findOne, findWhere, insert, update } from "@/lib/db";
 import { computeInvoice, gstStateFromGstin } from "@/lib/gst";
+import { purchaseSchema } from "@/lib/validations";
 
 export async function GET(req) {
   return withUser(async (user) => {
@@ -9,7 +10,7 @@ export async function GET(req) {
       const companyId = getCompanyIdFromRequest(req);
       await assertCompanyAccess(user, companyId);
       const purchases = await findWhere("purchases", { companyId });
-      purchases.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+      purchases.sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
       return ok(purchases);
     } catch (e) { return fail(e.message, e.status || 500); }
   });
@@ -22,28 +23,34 @@ export async function POST(req) {
       const companyId = body.companyId || getCompanyIdFromRequest(req);
       const company = await assertCompanyAccess(user, companyId);
 
-      const supplierStateCode = gstStateFromGstin(body.supplierGst) || company.stateCode;
+      const parse = purchaseSchema.safeParse(body);
+      if (!parse.success) {
+        return fail(parse.error.errors[0]?.message || "Invalid payload", 400);
+      }
+      const data = parse.data;
+
+      const supplierStateCode = gstStateFromGstin(data.supplierGst) || company.stateCode;
       const recipientStateCode = company.stateCode || gstStateFromGstin(company.gstNumber);
       const computed = computeInvoice({
-        items: (body.items || []).map((i) => ({
+        items: (data.items || []).map((i) => ({
           ...i,
-          sellingPrice: Number(i.purchasePrice || i.price || 0)
+          sellingPrice: Number(i.rate || i.purchasePrice || 0)
         })),
         supplierStateCode,
         recipientStateCode
       });
 
-      const status = body.status || (Number(body.amountPaid) >= computed.grandTotal ? "Paid" : (Number(body.amountPaid) > 0 ? "Partially Paid" : "Unpaid"));
+      const status = data.status || (Number(data.amountPaid) >= computed.grandTotal ? "Paid" : (Number(data.amountPaid) > 0 ? "Partially Paid" : "Unpaid"));
 
       const created = await insert("purchases", {
         companyId,
-        supplierName: body.supplierName || "",
-        supplierGst: body.supplierGst || "",
-        billNumber: body.billNumber || "",
-        billDate: body.billDate || new Date().toISOString().slice(0, 10),
-        items: (body.items || []).map((it, i) => ({
+        supplierName: data.supplierName || "",
+        supplierGst: data.supplierGst || "",
+        billNumber: data.billNumber || "",
+        billDate: data.billDate || new Date().toISOString().slice(0, 10),
+        items: (data.items || []).map((it, i) => ({
           ...it,
-          purchasePrice: Number(it.purchasePrice || it.price || 0),
+          purchasePrice: Number(it.rate || 0),
           quantity: Number(it.quantity || 0),
           gstRate: Number(it.gstRate || 0),
           taxable: computed.items[i]?.taxable,
@@ -57,32 +64,17 @@ export async function POST(req) {
         sgst: computed.sgst,
         igst: computed.igst,
         total: computed.grandTotal,
-        amountPaid: Number(body.amountPaid) || 0,
+        amountPaid: Number(data.amountPaid) || 0,
         status,
-        notes: body.notes || "",
-        pdfUrl: body.pdfUrl || "",
+        notes: data.notes || "",
+        pdfUrl: "",
         customerId: (body.customerId && body.customerId !== "null") ? body.customerId : null
       });
 
       // Increase inventory: match by sku else by name
-      for (const it of body.items || []) {
+      for (const it of data.items || []) {
         if (!it.name) continue;
 
-        // 1. Handle Product Mapping if realName is different from name
-        if (it.realName && it.realName.toLowerCase() !== it.name.toLowerCase()) {
-          const mapping = await findOne("product_mappings", { companyId, realName: it.realName });
-          if (!mapping) {
-            await insert("product_mappings", {
-              companyId,
-              realName: it.realName,
-              systemName: it.name
-            });
-          } else if (mapping.systemName !== it.name) {
-            await update("product_mappings", mapping.id, { systemName: it.name });
-          }
-        }
-
-        // 2. Update / Create Inventory
         let inv = null;
         if (it.sku) inv = await findOne("inventory", { companyId, sku: it.sku });
         if (!inv) inv = await findOne("inventory", { companyId, name: it.name });
@@ -90,8 +82,8 @@ export async function POST(req) {
         if (inv) {
           await update("inventory", inv.id, {
             quantity: Number(inv.quantity || 0) + Number(it.quantity || 0),
-            purchasePrice: Number(it.purchasePrice || inv.purchasePrice || 0)
-          });
+            purchasePrice: Number(it.rate || inv.purchasePrice || 0)
+          }, user.id);
         } else if (body.autoCreateInventory !== false) {
           await insert("inventory", {
             companyId,
@@ -100,8 +92,8 @@ export async function POST(req) {
             category: it.category || "",
             hsnCode: it.hsnCode || "",
             unit: it.unit || "",
-            purchasePrice: Number(it.purchasePrice || 0),
-            sellingPrice: Number(it.sellingPrice || it.purchasePrice || 0),
+            purchasePrice: Number(it.rate || 0),
+            sellingPrice: Number(it.rate || 0),
             gstRate: Number(it.gstRate || 0),
             quantity: Number(it.quantity || 0),
             lowStockThreshold: 0

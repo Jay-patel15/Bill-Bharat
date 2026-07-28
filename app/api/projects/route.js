@@ -1,6 +1,6 @@
 import { fail, ok, readBody, withUser } from "@/lib/api";
-import { assertCompanyAccess, getCompanyIdFromRequest } from "@/lib/db";
-import { findById, findWhere, insert } from "@/lib/db";
+import { assertCompanyAccess, getCompanyIdFromRequest, findById, findWhere, insert } from "@/lib/db";
+import { projectSchema } from "@/lib/validations";
 
 function computeContractValue(boqItems = []) {
   return boqItems.reduce((sum, it) => {
@@ -15,8 +15,12 @@ export async function GET(req) {
     try {
       const companyId = getCompanyIdFromRequest(req);
       await assertCompanyAccess(user, companyId);
-      const items = await findWhere("projects", (p) => p.companyId === companyId);
-      items.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+      const items = await findWhere("projects", { companyId });
+      items.sort((a, b) => {
+        const da = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const db = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return db - da;
+      });
       return ok(items);
     } catch (e) { return fail(e.message, e.status || 500); }
   });
@@ -28,12 +32,19 @@ export async function POST(req) {
       const body = await readBody(req);
       const companyId = body.companyId || getCompanyIdFromRequest(req);
       await assertCompanyAccess(user, companyId);
-      if (!body.name) return fail("Project name required", 400);
-      if (!body.customerId) return fail("Customer required", 400);
-      const customer = await findById("customers", body.customerId);
+
+      const payload = { ...body, companyId };
+      const parse = projectSchema.safeParse(payload);
+      if (!parse.success) {
+        return fail(parse.error.errors[0]?.message || "Invalid payload", 400);
+      }
+      const data = parse.data;
+
+      if (!data.customerId) return fail("Customer required", 400);
+      const customer = await findById("customers", data.customerId);
       if (!customer || customer.companyId !== companyId) return fail("Invalid customer", 400);
 
-      const boqItems = (body.boqItems || []).map((it) => ({
+      const boqItems = (data.boqItems || []).map((it) => ({
         name: it.name || "",
         description: it.description || "",
         hsnCode: it.hsnCode || "",
@@ -46,21 +57,18 @@ export async function POST(req) {
 
       const created = await insert("projects", {
         companyId,
-        customerId: body.customerId,
-        name: body.name,
-        code: body.code || "",
-        description: body.description || "",
+        customerId: data.customerId,
+        name: data.name,
+        code: data.code || "",
+        description: data.description || "",
         boqItems,
-        contractValue: body.contractValue !== undefined && body.contractValue !== ""
-          ? Number(body.contractValue)
-          : computeContractValue(boqItems),
-        startDate: body.startDate || null,
-        endDate: body.endDate || null,
-        status: body.status || "Active",
-        notes: body.notes || ""
+        contractValue: data.contractValue ? Number(data.contractValue) : computeContractValue(boqItems),
+        startDate: data.startDate || null,
+        endDate: data.endDate || null,
+        status: data.status || "Active",
+        notes: data.notes || ""
       });
       return ok(created);
     } catch (e) { return fail(e.message, e.status || 500); }
   });
 }
-

@@ -125,8 +125,7 @@ middleware.js       - JWT cookie gate for protected routes
 
 ## Notes & extensibility
 
-- The Sheets adapter (`lib/google/sheets.js`) is a generic key-value-row store. Add a new entity by extending `SCHEMAS` and the app handles bootstrap, CRUD and serialization.
-- Sheets is great for low/medium write traffic (a small business). For larger workloads, swap `lib/google/sheets.js` for any DB; the rest of the app does not care.
+- The database adapter (`lib/db.js`) is a generic key-value-row store over PostgreSQL. Add a new entity by extending `SCHEMAS` and the app handles bootstrap, CRUD and serialization.
 - The forgot-password flow generates a one-hour reset link. Wire your favourite email service (Resend/SendGrid) to mail it; until then the link is returned in the response for development.
 - `/api/sales/[id]/pdf?save=1` persists the PDF to Drive and stores the share URL on the sale row.
 - The AI parser uses `gemini-1.5-flash` with structured JSON output. Swap to OpenAI by editing `lib/ai.js`.
