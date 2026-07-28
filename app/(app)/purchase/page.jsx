@@ -663,12 +663,16 @@ export default function PurchasesPage() {
               <div className="col-span-full text-sm text-muted-foreground p-8 text-center border border-dashed rounded-lg bg-card">No suppliers found. Start by creating a new purchase!</div>
             ) : (
               filteredSuppliers.map((s) => (
-                <Card key={s.name} className="flex flex-col hover:border-primary/50 transition-colors shadow-sm">
+                <Card 
+                  key={s.name} 
+                  className="flex flex-col hover:border-primary/60 hover:shadow-md transition-all shadow-sm cursor-pointer group"
+                  onClick={() => setSelectedSupplierName(s.name)}
+                >
                   <CardHeader className="p-4 pb-3 border-b bg-muted/10">
                     <div className="flex items-start gap-3">
-                      <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0"><Building2 className="h-4 w-4 text-primary" /></div>
+                      <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors"><Building2 className="h-4 w-4 text-primary" /></div>
                       <div className="min-w-0">
-                        <h3 className="font-semibold text-base truncate" title={s.name}>{s.name}</h3>
+                        <h3 className="font-semibold text-base truncate group-hover:text-primary transition-colors" title={s.name}>{s.name}</h3>
                         <div className="text-[11px] text-muted-foreground mt-0.5">{s.gst ? <div className="truncate">📝 GST: {s.gst}</div> : <div className="italic">No GSTIN</div>}</div>
                       </div>
                     </div>
@@ -678,7 +682,7 @@ export default function PurchasesPage() {
                     <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground">Total Paid</span><span className="font-medium text-emerald-600">{formatINR(s.totalPaid)}</span></div>
                     <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground">Pending</span><span className="font-medium text-red-600">{formatINR(s.totalPending)}</span></div>
                     <div className="mt-auto pt-3">
-                      <Button variant="outline" className="w-full h-8 text-xs bg-muted/30 hover:bg-muted/50" onClick={() => setSelectedSupplierName(s.name)}>
+                      <Button variant="outline" className="w-full h-8 text-xs bg-muted/30 group-hover:bg-primary group-hover:text-primary-foreground transition-colors" onClick={(e) => { e.stopPropagation(); setSelectedSupplierName(s.name); }}>
                         <FileText className="h-3.5 w-3.5 mr-1.5" /> View Ledger ({s.purchases.length})
                       </Button>
                     </div>
