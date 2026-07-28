@@ -1,142 +1,111 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Download, Save, Share2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
-import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { StatusBadge } from "@/components/ui/badge";
-import { api } from "@/components/company-context";
+import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
+import { api, useCompany } from "@/components/company-context";
 import { useToast } from "@/components/ui/toast";
 import { formatINR, formatDate, parseInvoiceNotes } from "@/lib/utils";
 
-export default function InvoiceViewPage({ params }) {
+export default function SaleDetailPage({ params }) {
+  const router = useRouter();
   const toast = useToast();
+  const { active } = useCompany();
+
   const [sale, setSale] = useState(null);
   const [customer, setCustomer] = useState(null);
-  const [totalPaid, setTotalPaid] = useState(0);
+  const [items, setItems] = useState([]);
+  const [payments, setPayments] = useState([]);
+  const [pdfLink, setPdfLink] = useState("");
+
   const [payAmount, setPayAmount] = useState("");
   const [payMethod, setPayMethod] = useState("Cash");
   const [payRef, setPayRef] = useState("");
   const [editMode, setEditMode] = useState(false);
-  const [status, setStatus] = useState("");
-  const [pdfLink, setPdfLink] = useState("");
-  const [payments, setPayments] = useState([]);
-  const [editingPayment, setEditingPayment] = useState(null);
-
-  const { notes: plainNotes, metadata } = parseInvoiceNotes(sale?.notes || "");
-  const hasMetadata = metadata && Object.keys(metadata).length > 0;
 
   async function load() {
-    const s = await api(`/api/sales/${params.id}`);
-    setSale(s);
-    setTotalPaid(Number(s.amountPaid) || 0);
-    setPayments(s.payments || []);
-    setStatus(s.status);
-    setPdfLink(s.pdfUrl || "");
-    if (s.customerId) {
-      try { setCustomer(await api(`/api/customers/${s.customerId}`)); } catch {}
+    try {
+      const data = await api(`/api/sales/${params.id}`);
+      setSale(data);
+      setItems(data.items || []);
+      setPayments(data.payments || []);
+      if (data.notes) {
+        const { drivePdfUrl } = parseInvoiceNotes(data.notes);
+        if (drivePdfUrl) setPdfLink(drivePdfUrl);
+      }
+      if (data.customerId) {
+        try { setCustomer(await api(`/api/customers/${data.customerId}`)); } catch {}
+      }
+    } catch (e) {
+      toast({ type: "error", title: "Could not load", message: e.message });
+      router.replace("/sales");
     }
   }
-  useEffect(() => { load(); }, [params.id]);
+
+  useEffect(() => { if (active?.id) load(); }, [params.id, active?.id]);
 
   if (!sale) return <div className="text-sm text-muted-foreground">Loading…</div>;
 
-  const items = typeof sale.items === "string" ? JSON.parse(sale.items || "[]") : (sale.items || []);
-  const interstate = Number(sale.igst || 0) > 0;
+  const interstate = sale.supplierStateCode && sale.recipientStateCode && sale.supplierStateCode !== sale.recipientStateCode;
+  
+  const totalPaid = (payments || []).reduce((sum, p) => sum + Number(p.amount || 0), 0);
+  const pendingBalance = Math.max(0, Number(sale.total || 0) - totalPaid);
 
   async function savePayment() {
+    if (!payAmount || Number(payAmount) <= 0) {
+      toast({ type: "error", title: "Invalid amount", message: "Please enter a valid payment amount." });
+      return;
+    }
     try {
-      const inputVal = Number(payAmount) || 0;
-      const newTotal = editMode ? inputVal : totalPaid + inputVal;
-      const grandTotal = Number(sale.total || 0);
-
-      if (newTotal > grandTotal) {
-        toast({ 
-          type: "error", 
-          title: "Overpayment", 
-          message: `Total paid (${formatINR(newTotal)}) cannot exceed grand total (${formatINR(grandTotal)}).` 
+      if (editMode) {
+        await api(`/api/sales/${sale.id}`, {
+          method: "PUT",
+          body: JSON.stringify({ amountPaid: Number(payAmount) })
         });
-        return;
+        toast({ type: "success", title: "Payment amount corrected" });
+        setEditMode(false);
+      } else {
+        await api(`/api/sales/${sale.id}/payments`, {
+          method: "POST",
+          body: JSON.stringify({
+            amount: Number(payAmount),
+            method: payMethod,
+            notes: payRef ? `${payMethod} Ref: ${payRef}` : `Payment for ${sale.invoiceNumber}`
+          })
+        });
+        toast({ type: "success", title: "Payment recorded successfully" });
       }
-
-      // Auto-calculate status
-      let newStatus = "Unpaid";
-      if (newTotal >= grandTotal) newStatus = "Paid";
-      else if (newTotal > 0) newStatus = "Partially Paid";
-
-      const refLabel = payRef.trim() ? ` | Ref: ${payRef.trim()}` : "";
-      
-      await api(`/api/sales/${sale.id}`, {
-        method: "PUT", 
-        body: JSON.stringify({ 
-          amountPaid: newTotal, 
-          status: newStatus,
-          paymentMethod: payMethod,
-          paymentNotes: editMode 
-            ? `Correction to ${formatINR(newTotal)}` 
-            : `Payment for ${sale.invoiceNumber}${refLabel}`
-        })
-      });
-      
-      toast({ type: "success", title: editMode ? "Paid amount corrected" : "Payment recorded" });
       setPayAmount("");
       setPayRef("");
-      setEditMode(false);
       await load();
-    } catch (e) { 
-      toast({ type: "error", title: "Save failed", message: e.message }); 
+    } catch (e) {
+      toast({ type: "error", title: "Payment failed", message: e.message });
     }
   }
 
-
   async function deletePayment(paymentId) {
-    if (!confirm("Delete this payment entry? The invoice total will be recalculated.")) return;
+    if (!confirm("Delete this payment entry?")) return;
     try {
       await api(`/api/payments/${paymentId}`, { method: "DELETE" });
       toast({ type: "success", title: "Payment entry deleted" });
       await load();
     } catch (e) {
-      toast({ type: "error", title: "Delete failed", message: e.message });
-    }
-  }
-
-  async function saveEditPayment() {
-    if (!editingPayment) return;
-    try {
-      const refSuffix = editingPayment.ref?.trim() ? ` | Ref: ${editingPayment.ref.trim()}` : "";
-      const finalNotes = (editingPayment.baseNotes || "").trim() + refSuffix;
-      await api(`/api/payments/${editingPayment.id}`, {
-        method: "PUT",
-        body: JSON.stringify({
-          amount: Number(editingPayment.amount),
-          method: editingPayment.method,
-          notes: finalNotes,
-        })
-      });
-      toast({ type: "success", title: "Payment updated" });
-      setEditingPayment(null);
-      await load();
-    } catch (e) {
-      toast({ type: "error", title: "Update failed", message: e.message });
+      toast({ type: "error", title: "Failed to delete payment", message: e.message });
     }
   }
 
   async function persistPdf() {
     try {
-      toast({ type: "info", title: "Uploading to Google Drive..." });
-      const res = await fetch(`/api/sales/${sale.id}/pdf?save=1&drive=1`, {
-        method: "GET", headers: { "x-company-id": sale.companyId }
-      });
+      toast({ type: "info", title: "Uploading invoice PDF to Drive…" });
+      const res = await fetch(`/api/sales/${sale.id}/pdf`);
       const json = await res.json();
-      if (json.ok) {
-        const driveLink = json.pdfUrl || json.data?.viewUrl;
-        setPdfLink(driveLink);
-        toast({ type: "success", title: "Invoice saved to Google Drive!" });
-        if (driveLink) {
-          window.open(driveLink, "_blank");
-        }
-        await load();
+      if (json.ok && json.data?.drivePdfUrl) {
+        setPdfLink(json.data.drivePdfUrl);
+        toast({ type: "success", title: "PDF saved to Google Drive", message: json.data.drivePdfUrl });
       } else throw new Error(json.error || "Failed to upload");
     } catch (e) { toast({ type: "error", title: "Could not save PDF to Drive", message: e.message }); }
   }
@@ -206,16 +175,17 @@ export default function InvoiceViewPage({ params }) {
             {Number(sale.discount) ? <Row label="Discount" value={"- " + formatINR(sale.discount)} /> : null}
             <div className="border-t pt-2">
               <Row label={<strong>Grand total</strong>} value={<strong>{formatINR(sale.total)}</strong>} />
-              <Row label="Paid" value={formatINR(sale.amountPaid)} />
+              <Row label="Paid" value={formatINR(totalPaid)} />
               <Row label="Status" value={<StatusBadge status={sale.status} />} />
             </div>
           </CardContent>
         </Card>
       </div>
 
+      {/* Payment Section with 3 Summary Cards */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0">
-          <CardTitle>Update payment</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+          <CardTitle>Update Payment & Receipts</CardTitle>
           <Button 
             variant="ghost" 
             size="sm" 
@@ -229,16 +199,34 @@ export default function InvoiceViewPage({ params }) {
           </Button>
         </CardHeader>
         <CardContent className="space-y-6">
+
+          {/* 3 Summary Cards for Visual Balance Tracking */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="p-3.5 rounded-lg border bg-slate-50 dark:bg-slate-900 text-center">
+              <div className="text-[11px] font-semibold text-muted-foreground uppercase">Invoice Total</div>
+              <div className="text-lg font-bold mt-1">{formatINR(sale.total)}</div>
+            </div>
+            <div className="p-3.5 rounded-lg border border-emerald-200 bg-emerald-50/50 dark:bg-emerald-950/20 text-center">
+              <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 uppercase">Amount Received</div>
+              <div className="text-lg font-bold text-emerald-800 dark:text-emerald-300 mt-1">{formatINR(totalPaid)}</div>
+            </div>
+            <div className="p-3.5 rounded-lg border border-rose-200 bg-rose-50/50 dark:bg-rose-950/20 text-center">
+              <div className="text-[11px] font-semibold text-rose-700 dark:text-rose-400 uppercase">Pending Balance</div>
+              <div className="text-lg font-bold text-rose-800 dark:text-rose-300 mt-1">{formatINR(pendingBalance)}</div>
+            </div>
+          </div>
+
           {editMode && (
             <div className="text-[11px] text-amber-600 bg-amber-50 border border-amber-200 rounded p-2">
               ⚠️ <strong>Correction Mode:</strong> This will <strong>replace</strong> the current total paid amount ({formatINR(totalPaid)}). Use this only to fix mistakes.
             </div>
           )}
+
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             <Field label={editMode ? "Correct Total Paid (₹)" : "Amount received now (₹)"}>
               <Input 
                 type="number" 
-                placeholder={editMode ? "Enter correct total" : "Enter amount received"}
+                placeholder={editMode ? "Enter correct total" : `Max ${formatINR(pendingBalance)}`}
                 value={payAmount} 
                 onChange={(e) => setPayAmount(e.target.value)} 
               />
@@ -270,8 +258,8 @@ export default function InvoiceViewPage({ params }) {
                 />
               </Field>
             )}
-            <div className="flex items-end">
-              <Button onClick={savePayment} className="w-full md:w-auto">
+            <div className="flex items-end md:col-span-2 lg:col-span-1">
+              <Button onClick={savePayment} className="w-full">
                 {editMode ? "Save Correction" : "Record Payment"}
               </Button>
             </div>
@@ -288,108 +276,20 @@ export default function InvoiceViewPage({ params }) {
                       <TH className="py-2">Method</TH>
                       <TH className="py-2 text-right">Amount</TH>
                       <TH className="py-2">Notes</TH>
-                      <TH className="py-2" />
+                      <TH className="py-2 text-right">Actions</TH>
                     </TR>
                   </THead>
                   <TBody>
-                    {payments.map((p, i) => (
-                      <>
-                        <TR key={p.id || i}>
-                          <TD className="py-2 text-xs">{formatDate(p.date)}</TD>
-                          <TD className="py-2 text-xs font-medium">{p.method}</TD>
-                          <TD className="py-2 text-xs text-right font-medium text-emerald-600">
-                            {p.amount > 0 ? "+" : ""}{formatINR(p.amount)}
-                          </TD>
-                          <TD className="py-2 text-xs text-muted-foreground">{p.notes}</TD>
-                          <TD className="py-2 text-right">
-                            <div className="flex gap-1 justify-end">
-                              <button
-                              onClick={() => {
-                                if (editingPayment?.id === p.id) {
-                                  setEditingPayment(null);
-                                } else {
-                                  // Parse existing ref from notes (format: "... | Ref: XXXX")
-                                  const refMatch = (p.notes || "").match(/ \| Ref: (.+)$/);
-                                  const baseNotes = refMatch ? p.notes.replace(/ \| Ref: .+$/, "") : (p.notes || "");
-                                  setEditingPayment({ 
-                                    id: p.id, 
-                                    amount: p.amount, 
-                                    method: p.method, 
-                                    ref: refMatch ? refMatch[1] : "",
-                                    baseNotes 
-                                  });
-                                }
-                              }}
-                                className="text-[11px] px-2 py-0.5 rounded border border-blue-300 text-blue-600 hover:bg-blue-50 transition-colors"
-                              >{editingPayment?.id === p.id ? "Cancel" : "Edit"}</button>
-                              <button
-                                onClick={() => deletePayment(p.id)}
-                                className="text-[11px] px-2 py-0.5 rounded border border-red-300 text-red-500 hover:bg-red-50 transition-colors"
-                              >Delete</button>
-                            </div>
-                          </TD>
-                        </TR>
-                        {editingPayment?.id === p.id && (
-                          <TR key={`edit-${p.id}`}>
-                            <TD colSpan={5} className="py-3 bg-muted/20 border-b">
-                              <div className="flex flex-wrap gap-2 items-end px-1">
-                                <div>
-                                  <label className="text-[11px] text-muted-foreground block mb-1">Amount (₹)</label>
-                                  <Input
-                                    type="number"
-                                    value={editingPayment.amount}
-                                    onChange={(e) => setEditingPayment({ ...editingPayment, amount: e.target.value })}
-                                    className="h-7 text-xs w-32"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="text-[11px] text-muted-foreground block mb-1">Method</label>
-                                  <select
-                                    value={editingPayment.method}
-                                    onChange={(e) => setEditingPayment({ ...editingPayment, method: e.target.value, ref: "" })}
-                                    className="h-7 text-xs rounded-md border border-input bg-background px-2 py-0.5"
-                                  >
-                                    <option>Cash</option>
-                                    <option>UPI</option>
-                                    <option>NEFT</option>
-                                    <option>RTGS</option>
-                                    <option>Cheque</option>
-                                    <option>Bank Transfer</option>
-                                  </select>
-                                </div>
-                                {["UPI", "NEFT", "RTGS", "Cheque"].includes(editingPayment.method) && (
-                                  <div>
-                                    <label className="text-[11px] text-muted-foreground block mb-1">
-                                      {editingPayment.method === "Cheque" ? "Cheque Number" :
-                                       editingPayment.method === "UPI" ? "UPI Transaction ID" :
-                                       "Transaction ID (NEFT/RTGS)"}
-                                    </label>
-                                    <Input
-                                      placeholder={
-                                        editingPayment.method === "Cheque" ? "e.g. 004521" :
-                                        editingPayment.method === "UPI" ? "e.g. UPI/123456789" :
-                                        "e.g. NEFT123456789"
-                                      }
-                                      value={editingPayment.ref || ""}
-                                      onChange={(e) => setEditingPayment({ ...editingPayment, ref: e.target.value })}
-                                      className="h-7 text-xs w-40"
-                                    />
-                                  </div>
-                                )}
-                                <div className="flex-1 min-w-[160px]">
-                                  <label className="text-[11px] text-muted-foreground block mb-1">Notes</label>
-                                  <Input
-                                    value={editingPayment.baseNotes || ""}
-                                    onChange={(e) => setEditingPayment({ ...editingPayment, baseNotes: e.target.value })}
-                                    className="h-7 text-xs"
-                                  />
-                                </div>
-                                <Button size="sm" onClick={saveEditPayment} className="h-7 text-xs">Save</Button>
-                              </div>
-                            </TD>
-                          </TR>
-                        )}
-                      </>
+                    {payments.map((p) => (
+                      <TR key={p.id}>
+                        <TD className="py-2 text-xs">{formatDate(p.date || p.createdAt)}</TD>
+                        <TD className="py-2 text-xs font-medium">{p.method || p.paymentMethod || "Cash"}</TD>
+                        <TD className="py-2 text-xs text-right font-semibold text-emerald-600">+ {formatINR(p.amount)}</TD>
+                        <TD className="py-2 text-xs text-muted-foreground">{p.notes || "—"}</TD>
+                        <TD className="py-2 text-right space-x-1">
+                          <Button size="xs" variant="outline" onClick={() => deletePayment(p.id)} className="text-rose-600 border-rose-200 hover:bg-rose-50 h-7 text-xs">Delete</Button>
+                        </TD>
+                      </TR>
                     ))}
                   </TBody>
                 </Table>
@@ -398,61 +298,6 @@ export default function InvoiceViewPage({ params }) {
           )}
         </CardContent>
       </Card>
-
-      {hasMetadata && (
-        <Card>
-          <CardHeader><CardTitle>Transport & Consignee Details</CardTitle></CardHeader>
-          <CardContent className="grid gap-6 md:grid-cols-2">
-            <div className="space-y-2 text-sm">
-              <h4 className="font-semibold border-b pb-1 text-muted-foreground uppercase text-[10px] tracking-wider">Dispatch / Transport Info</h4>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2 pt-1">
-                <span className="text-muted-foreground">Challan Number:</span>
-                <span className="font-medium">{metadata.challanNumber || "—"}</span>
-                <span className="text-muted-foreground">Challan Date:</span>
-                <span className="font-medium">{formatDate(metadata.challanDate) || "—"}</span>
-                <span className="text-muted-foreground">Payment Terms:</span>
-                <span className="font-medium">{metadata.paymentTerms || "—"}</span>
-                <span className="text-muted-foreground">Order Number:</span>
-                <span className="font-medium">{metadata.orderNumber || "—"}</span>
-                <span className="text-muted-foreground">Order Date:</span>
-                <span className="font-medium">{formatDate(metadata.orderDate) || "—"}</span>
-                <span className="text-muted-foreground">Transporter Name:</span>
-                <span className="font-medium">{metadata.transporter || "—"}</span>
-                <span className="text-muted-foreground">L.R. Number / Date:</span>
-                <span className="font-medium">{[metadata.lrNumber, formatDate(metadata.lrDate)].filter(Boolean).join(" / ") || "—"}</span>
-                <span className="text-muted-foreground">E-way Bill Number:</span>
-                <span className="font-medium">{metadata.ewayNumber || "—"}</span>
-              </div>
-            </div>
-            <div className="space-y-2 text-sm">
-              <h4 className="font-semibold border-b pb-1 text-muted-foreground uppercase text-[10px] tracking-wider">Consignee Info (Ship To)</h4>
-              {metadata.consigneeSameAsBuyer ? (
-                <p className="text-muted-foreground italic text-xs pt-2">Same as Buyer (Bill To)</p>
-              ) : (
-                <div className="grid grid-cols-2 gap-x-4 gap-y-2 pt-1">
-                  <span className="text-muted-foreground">Name:</span>
-                  <span className="font-medium">{metadata.consigneeName || "—"}</span>
-                  <span className="text-muted-foreground">Phone:</span>
-                  <span className="font-medium">{metadata.consigneePhone || "—"}</span>
-                  <span className="text-muted-foreground">GSTIN:</span>
-                  <span className="font-medium">{metadata.consigneeGst || "—"}</span>
-                  <span className="text-muted-foreground">State:</span>
-                  <span className="font-medium">{metadata.consigneeState ? `${metadata.consigneeState} (${metadata.consigneeStateCode || ""})` : "—"}</span>
-                  <span className="text-muted-foreground col-span-2 mt-1 border-t pt-1">Address:</span>
-                  <span className="col-span-2 font-medium break-all">{metadata.consigneeAddress || "—"}</span>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {plainNotes && (
-        <Card>
-          <CardHeader><CardTitle>Notes</CardTitle></CardHeader>
-          <CardContent className="text-sm whitespace-pre-wrap">{plainNotes}</CardContent>
-        </Card>
-      )}
     </div>
   );
 }
