@@ -258,8 +258,9 @@ erDiagram
 
 ## 3. Comprehensive Feature Directory & Technical Modules
 
-### 🏢 3.1 Multi-Tenancy & Company Context
+### 🏢 3.1 Multi-Tenancy & Company Settings
 - **Multi-Company Management**: Manage multiple business entities (e.g., hardware store, electrical contracting firm, construction firm) under a single login.
+- **Settings Integration**: Companies management is integrated into the **Settings Menu** (`/settings`) rather than cluttering the main sidebar.
 - **`CompanyContext` Guard**: Instantly switches active company context across all UI routes and API calls via the `x-company-id` header.
 - **Company Branding & Settings**: Set company-specific GSTIN, PAN, Bank Details, Logo, Invoice Terms, and word-by-word company title typography.
 
@@ -287,21 +288,24 @@ erDiagram
 
 ---
 
-### 🛒 3.4 Purchases & Supplier Passbook Statement
+### 🛒 3.4 Purchases, Supplier Passbook & Quick Payments
 - **AI Purchase Reader (`/purchase/ai-upload`)**: Uses Google Gemini 1.5 Flash Vision to parse supplier invoice PDFs/photos in seconds, extracting Supplier Name, GSTIN, Bill Date, Line Items, Rates, and Taxes.
+- **Supplier Card Clickability**: Entire Supplier Card box is clickable (`cursor-pointer`) to immediately open vendor ledgers.
 - **Supplier Passbook Statement (Jama & Udhar)**:
   - **Purchase Bill Received**: Placed under **Udhar (Dr)** (We owe supplier).
   - **Payment Paid to Supplier**: Placed under **Jama (Cr)** (Cash/UPI/Bank paid out).
   - **Running Supplier Payable**: Live running balance showing exact vendor payable liability.
+- **Direct Payment Actions**: Header features a **`+ Record Payment / Pay Bill`** button and a **Supplier Bills table** with row-level payment logging.
 
 ---
 
-### 📦 3.5 Inventory & Master Product List
+### 📦 3.5 Inventory & Master Product Catalogue
 - **Dual Pricing & Stock Alerts**: Track Purchase Price, Selling Price, HSN, and low-stock threshold warnings.
 - **Master Product Catalogue**:
-  - Add single master items.
+  - **Single Add**: Add individual master product names.
   - **Bulk Typing / Copy-Paste**: Type or paste product master names (one item per line).
   - **Upload CSV / Excel File**: Import `.csv` or `.xlsx` files to populate master product names.
+  - **Relaxed Zod Validation**: Automatically defaults `systemName` to `realName` if omitted.
 - **Auto-Product Mapping**: Automatically maps supplier item names (`realName`) on bills to internal master items (`systemName`) and saves them to `product_mappings`.
 
 ---
