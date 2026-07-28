@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Settings, Loader2, Upload, FileImage, Palette, Type, Eye, Save, X, Sparkles, FileSpreadsheet, AlignLeft } from "lucide-react";
+import { Plus, Trash2, Settings, Loader2, Upload, FileImage, Palette, Type, Eye, Save, X, Sparkles, FileSpreadsheet, AlignLeft, Building2 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -279,6 +279,29 @@ export default function SettingsPage() {
           </div>
 
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <Card
+              className="hover:border-primary/50 cursor-pointer transition-all hover:shadow-md border-2 border-transparent bg-card group"
+              onClick={() => router.push("/companies")}
+            >
+              <CardHeader className="flex flex-row items-center gap-4 space-y-0 pb-2">
+                <div className="rounded-lg bg-primary/10 p-3 group-hover:bg-primary/20 transition-colors">
+                  <Building2 className="h-6 w-6 text-primary" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg font-bold">Companies Management</CardTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">Manage business profiles, GSTIN, bank details, and active company.</p>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-4">
+                <p className="text-sm text-muted-foreground">
+                  Create and configure your company profiles, update GSTIN, PAN, bank account details, and switch active company context.
+                </p>
+                <div className="mt-4 text-xs font-semibold text-primary group-hover:underline">
+                  Manage Companies &rarr;
+                </div>
+              </CardContent>
+            </Card>
+
             <Card
               className="hover:border-primary/50 cursor-pointer transition-all hover:shadow-md border-2 border-transparent bg-card group"
               onClick={() => setActiveSection("template")}
