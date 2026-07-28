@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, FileDown, Eye, Plus, Trash2, Save, Pencil } from "lucide-react";
+import { ArrowLeft, FileDown, Eye, Plus, Trash2, Save, Pencil, BookOpen, TrendingUp, TrendingDown, Landmark } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
@@ -41,7 +41,7 @@ export default function ProjectDetailPage({ params }) {
   useEffect(() => { if (active?.id) load(); }, [params.id, active?.id]);
 
   if (!data) return <div className="text-sm text-muted-foreground">Loading…</div>;
-  const { project, customer, contractValue, billed, collected, pending, remaining, overBilled, billedPercent, collectedPercent, invoices } = data;
+  const { project, customer, contractValue, billed, collected, pending, remaining, overBilled, siteJama, siteUdhar, netSiteBalance, billedPercent, collectedPercent, invoices, statement } = data;
 
   async function saveProject(e) {
     e.preventDefault();
@@ -94,11 +94,56 @@ export default function ProjectDetailPage({ params }) {
 
       {/* Financial summary */}
       <div className="grid gap-3 md:grid-cols-5">
-        <SummaryCard label="Contract" value={formatINR(contractValue)} primary />
+        <SummaryCard label="Contract Value" value={formatINR(contractValue)} primary />
         <SummaryCard label={`Billed (${billedPercent}%)`} value={formatINR(billed)} accent="text-sky-700" />
         <SummaryCard label={`Collected (${collectedPercent}%)`} value={formatINR(collected)} accent="text-emerald-600" />
-        <SummaryCard label="Pending payment" value={formatINR(pending)} accent="text-amber-600" />
-        <SummaryCard label="Remaining to bill" value={formatINR(remaining)} accent={overBilled ? "text-rose-600" : ""} />
+        <SummaryCard label="Pending Dues" value={formatINR(pending)} accent="text-amber-600" />
+        <SummaryCard label="Remaining Contract" value={formatINR(remaining)} accent={overBilled ? "text-rose-600" : ""} />
+      </div>
+
+      {/* Site Bank Balance Sheet Cards */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card className="bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <div className="text-xs font-semibold uppercase text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+                <TrendingUp className="h-4 w-4" /> Site Jama (Cr / Received)
+              </div>
+              <div className="text-xl font-bold text-emerald-800 dark:text-emerald-300 mt-1">
+                {formatINR(siteJama || billed)}
+              </div>
+            </div>
+            <Landmark className="h-8 w-8 text-emerald-500/40" />
+          </CardContent>
+        </Card>
+
+        <Card className="bg-rose-50/50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-800">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <div className="text-xs font-semibold uppercase text-rose-700 dark:text-rose-400 flex items-center gap-1.5">
+                <TrendingDown className="h-4 w-4" /> Site Udhar (Dr / Expenses)
+              </div>
+              <div className="text-xl font-bold text-rose-800 dark:text-rose-300 mt-1">
+                {formatINR(siteUdhar || 0)}
+              </div>
+            </div>
+            <Landmark className="h-8 w-8 text-rose-500/40" />
+          </CardContent>
+        </Card>
+
+        <Card className="bg-indigo-50/50 dark:bg-indigo-950/20 border-indigo-200 dark:border-indigo-800">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <div className="text-xs font-semibold uppercase text-indigo-700 dark:text-indigo-400 flex items-center gap-1.5">
+                <BookOpen className="h-4 w-4" /> Net Site Balance (Surplus)
+              </div>
+              <div className={`text-xl font-bold mt-1 ${netSiteBalance >= 0 ? "text-indigo-800 dark:text-indigo-300" : "text-rose-600"}`}>
+                {formatINR(netSiteBalance || 0)}
+              </div>
+            </div>
+            <Landmark className="h-8 w-8 text-indigo-500/40" />
+          </CardContent>
+        </Card>
       </div>
 
       <Card>
@@ -112,6 +157,58 @@ export default function ProjectDetailPage({ params }) {
             </span>
           </div>
           <ProgressBar billed={billedPercent} collected={collectedPercent} />
+        </CardContent>
+      </Card>
+
+      {/* Site Bank Passbook Statement */}
+      <Card>
+        <CardHeader className="flex-row items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <BookOpen className="h-5 w-5 text-indigo-600" /> Site Bank Passbook Statement (Jama & Udhar)
+            </CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              Chronological passbook statement showing Billed/Received (Jama), Expenses Spent (Udhar), and Running Balance.
+            </p>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {!statement || statement.length === 0 ? (
+            <div className="text-sm text-muted-foreground p-4 text-center">
+              No transactions recorded for this site yet.
+            </div>
+          ) : (
+            <Table>
+              <THead>
+                <TR>
+                  <TH>Date</TH>
+                  <TH>Ref / Voucher #</TH>
+                  <TH>Particulars / Description</TH>
+                  <TH className="text-right text-emerald-600">Jama (Cr / Money In)</TH>
+                  <TH className="text-right text-rose-600">Udhar (Dr / Money Out)</TH>
+                  <TH className="text-right">Running Site Balance</TH>
+                </TR>
+              </THead>
+              <TBody>
+                {statement.map((row, idx) => (
+                  <TR key={idx}>
+                    <TD className="text-xs">{formatDate(row.date)}</TD>
+                    <TD className="font-medium text-xs">{row.refNo}</TD>
+                    <TD className="text-xs">{row.particulars}</TD>
+                    <TD className="text-right font-medium text-emerald-600 text-xs">
+                      {row.jama > 0 ? `+ ${formatINR(row.jama)}` : "—"}
+                    </TD>
+                    <TD className="text-right font-medium text-rose-600 text-xs">
+                      {row.udhar > 0 ? `- ${formatINR(row.udhar)}` : "—"}
+                    </TD>
+                    <TD className={`text-right font-bold text-xs ${row.runningBalance >= 0 ? "text-indigo-700 dark:text-indigo-400" : "text-rose-600"}`}>
+                      {formatINR(row.runningBalance)}
+                    </TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 
