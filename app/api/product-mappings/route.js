@@ -29,22 +29,37 @@ export async function POST(req) {
           const parse = productMappingSchema.safeParse({
             companyId,
             realName: realName.trim(),
-            systemName: systemName.trim()
+            systemName: systemName ? systemName.trim() : realName.trim()
           });
           if (parse.success) {
-            const c = await insert("product_mappings", parse.data);
+            const c = await insert("product_mappings", {
+              ...parse.data,
+              systemName: parse.data.systemName || parse.data.realName
+            });
             created.push(c);
           }
         }
         return ok(created);
       }
 
-      const parse = productMappingSchema.safeParse({ ...body, companyId });
+      const realName = (body.realName || "").trim();
+      const systemName = (body.systemName || realName).trim();
+
+      const parse = productMappingSchema.safeParse({
+        companyId,
+        realName,
+        systemName
+      });
+
       if (!parse.success) {
         return fail(parse.error.errors[0]?.message || "Invalid payload", 400);
       }
 
-      const created = await insert("product_mappings", parse.data);
+      const created = await insert("product_mappings", {
+        ...parse.data,
+        systemName: parse.data.systemName || parse.data.realName
+      });
+
       return ok(created);
     } catch (e) { return fail(e.message, e.status || 500); }
   });
