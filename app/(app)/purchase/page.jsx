@@ -412,14 +412,27 @@ export default function PurchasesPage() {
 
     return (
       <div className="space-y-6">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => setSelectedSupplierName(null)} className="h-8 w-8 rounded-full bg-muted/50 hover:bg-muted shrink-0">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div>
-            <h1 className="text-2xl font-semibold">{supplierData.name}</h1>
-            <p className="text-sm text-muted-foreground">{supplierData.gst ? `GSTIN: ${supplierData.gst}` : "No GSTIN provided"}</p>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="icon" onClick={() => setSelectedSupplierName(null)} className="h-8 w-8 rounded-full bg-muted/50 hover:bg-muted shrink-0">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <div>
+              <h1 className="text-2xl font-semibold">{supplierData.name}</h1>
+              <p className="text-sm text-muted-foreground">{supplierData.gst ? `GSTIN: ${supplierData.gst}` : "No GSTIN provided"}</p>
+            </div>
           </div>
+          {supplierPurchases.length > 0 && (
+            <Button 
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm"
+              onClick={() => {
+                const pendingBill = supplierPurchases.find(p => Math.max(0, Number(p.total || 0) - Number(p.amountPaid || 0)) > 0) || supplierPurchases[0];
+                if (pendingBill) openDetail(pendingBill);
+              }}
+            >
+              <CreditCard className="h-4 w-4 mr-1.5" /> Record Payment / Pay Bill
+            </Button>
+          )}
         </div>
 
         {/* Supplier Specific Summary */}
@@ -444,6 +457,61 @@ export default function PurchasesPage() {
           </Card>
         </div>
 
+        {/* Purchase Bills & Payment Actions */}
+        <Card>
+          <CardHeader className="flex-row items-center justify-between">
+            <div>
+              <CardTitle>Supplier Bills ({supplierPurchases.length})</CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">Click on any bill or &quot;Pay Bill&quot; to record cash/bank payments to {supplierData.name}.</p>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {supplierPurchases.length === 0 ? (
+              <div className="text-sm text-muted-foreground p-4 text-center border border-dashed rounded-lg">No purchase bills found for this supplier.</div>
+            ) : (
+              <Table>
+                <THead>
+                  <TR>
+                    <TH>Bill #</TH>
+                    <TH>Date</TH>
+                    <TH className="text-right">Total</TH>
+                    <TH className="text-right text-emerald-600">Paid</TH>
+                    <TH className="text-right text-red-600">Pending</TH>
+                    <TH>Status</TH>
+                    <TH className="text-right">Action</TH>
+                  </TR>
+                </THead>
+                <TBody>
+                  {supplierPurchases.map((p) => {
+                    const pendingAmt = Math.max(0, Number(p.total || 0) - Number(p.amountPaid || 0));
+                    return (
+                      <TR
+                        key={p.id}
+                        className="cursor-pointer hover:bg-muted/50 transition-colors"
+                        onClick={() => openDetail(p)}
+                      >
+                        <TD className="font-mono text-xs font-semibold">{p.billNumber || "—"}</TD>
+                        <TD className="text-xs">{formatDate(p.billDate)}</TD>
+                        <TD className="text-right font-semibold text-xs">{formatINR(p.total)}</TD>
+                        <TD className="text-right text-emerald-600 font-medium text-xs">{formatINR(p.amountPaid || 0)}</TD>
+                        <TD className="text-right font-semibold text-xs" style={{ color: pendingAmt > 0 ? "#ef4444" : "#16a34a" }}>
+                          {formatINR(pendingAmt)}
+                        </TD>
+                        <TD><StatusBadge status={p.status} /></TD>
+                        <TD className="text-right">
+                          <Button size="xs" variant="outline" className="h-7 text-xs border-emerald-500 text-emerald-600 hover:bg-emerald-50" onClick={(e) => { e.stopPropagation(); openDetail(p); }}>
+                            <CreditCard className="h-3 w-3 mr-1" /> Pay Bill
+                          </Button>
+                        </TD>
+                      </TR>
+                    );
+                  })}
+                </TBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+
         {/* Supplier Passbook Statement (Jama & Udhar) */}
         {(() => {
           const supplierTimeline = [];
@@ -451,6 +519,7 @@ export default function PurchasesPage() {
             // Purchase Bill (Udhar - We Owe Supplier)
             supplierTimeline.push({
               id: `pur-${p.id}`,
+              rawBill: p,
               date: p.billDate || p.createdAt,
               refNo: p.billNumber || "BILL",
               particulars: `Purchase Bill from ${p.supplierName}`,
@@ -464,6 +533,7 @@ export default function PurchasesPage() {
               p.payments.forEach(pay => {
                 supplierTimeline.push({
                   id: `pay-${pay.id}`,
+                  rawBill: p,
                   date: pay.date || pay.createdAt,
                   refNo: p.billNumber || "RECEIPT",
                   particulars: `Payment Paid (${pay.method || "Cash"}) - ${pay.notes || "Bill Settlement"}`,
@@ -475,6 +545,7 @@ export default function PurchasesPage() {
             } else if (Number(p.amountPaid || 0) > 0) {
               supplierTimeline.push({
                 id: `pay-total-${p.id}`,
+                rawBill: p,
                 date: p.billDate || p.createdAt,
                 refNo: p.billNumber || "RECEIPT",
                 particulars: `Payment Paid (${p.paymentMethod || "Cash"})`,
@@ -524,7 +595,11 @@ export default function PurchasesPage() {
                     </THead>
                     <TBody>
                       {supplierStatement.map((row, idx) => (
-                        <TR key={idx} className={row.type === "PAYMENT_PAID" ? "bg-emerald-50/30 dark:bg-emerald-950/10 font-medium" : ""}>
+                        <TR 
+                          key={idx} 
+                          className={`cursor-pointer hover:bg-muted/50 transition-colors ${row.type === "PAYMENT_PAID" ? "bg-emerald-50/30 dark:bg-emerald-950/10 font-medium" : ""}`}
+                          onClick={() => row.rawBill && openDetail(row.rawBill)}
+                        >
                           <TD className="text-xs">{formatDate(row.date)}</TD>
                           <TD>
                             {row.type === "PAYMENT_PAID" && <StatusBadge status="Paid" />}
