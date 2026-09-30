@@ -8,6 +8,7 @@ import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { ReportsNav } from "@/components/reports-nav";
 import { formatINR, formatDate } from "@/lib/utils";
 import { NoCompanySelected } from "@/components/empty-state";
+import { useCompany, api } from "@/components/company-context";
 
 export default function SalesReportPage() {
   const { active } = useCompany();

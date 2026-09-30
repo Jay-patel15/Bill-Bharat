@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { ReportsNav } from "@/components/reports-nav";
 import { formatINR } from "@/lib/utils";
 import { NoCompanySelected } from "@/components/empty-state";
+import { useCompany, api } from "@/components/company-context";
 
 export default function GstReportPage() {
   const { active } = useCompany();
