@@ -1,18 +1,44 @@
 "use client";
 import Link from "next/link";
-import { ChevronDown, Plus } from "lucide-react";
-import { useState } from "react";
+import { ChevronDown, Plus, Sun, Moon } from "lucide-react";
+import { useState, useEffect } from "react";
 import { useCompany } from "./company-context";
 
 export function Topbar({ user }) {
   const { companies, active, setActive } = useCompany();
   const [open, setOpen] = useState(false);
+  const [darkMode, setDarkMode] = useState(false);
+
+  useEffect(() => {
+    const isDark =
+      document.documentElement.classList.contains("dark") ||
+      localStorage.getItem("theme") === "dark" ||
+      (!("theme" in localStorage) && window.matchMedia("(prefers-color-scheme: dark)").matches);
+
+    if (isDark) {
+      document.documentElement.classList.add("dark");
+      setDarkMode(true);
+    } else {
+      document.documentElement.classList.remove("dark");
+      setDarkMode(false);
+    }
+  }, []);
+
+  function toggleDark() {
+    const next = !darkMode;
+    setDarkMode(next);
+    if (next) {
+      document.documentElement.classList.add("dark");
+      localStorage.setItem("theme", "dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+      localStorage.setItem("theme", "light");
+    }
+  }
 
   return (
     <header className="h-14 border-b bg-background/80 backdrop-blur sticky top-0 z-30 flex items-center justify-between px-5">
       <div className="flex items-center gap-3">
-        {/* HAMBURGER MENU REMOVED AS REQUESTED */}
-        
         <div className="relative">
           <button
             onClick={() => setOpen((s) => !s)}
@@ -51,6 +77,14 @@ export function Topbar({ user }) {
       </div>
 
       <div className="flex items-center gap-3 text-sm">
+        <button
+          onClick={toggleDark}
+          className="p-2 rounded-md border bg-background text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+          title={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+        >
+          {darkMode ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4 text-slate-700 dark:text-slate-200" />}
+        </button>
+
         <div className="hidden sm:block text-right mr-1">
           <div className="font-medium leading-none">{user?.name}</div>
           <div className="text-[11px] text-muted-foreground">{user?.email}</div>

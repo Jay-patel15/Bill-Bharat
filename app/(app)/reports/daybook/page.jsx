@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { PlusCircle, RefreshCw, Building, ArrowUpRight, ArrowDownLeft, ExternalLink } from "lucide-react";
 import { formatINR } from "@/lib/utils";
 import { format } from "date-fns";
+import { ReportsNav } from "@/components/reports-nav";
 
 const OUT_CATEGORIES = [
   "Site Expense",
@@ -139,6 +140,7 @@ export default function DayBookPage() {
 
   return (
     <div className="space-y-6">
+      <ReportsNav />
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Accounting Day Book (Rojmel / રોજમેળ)</h1>

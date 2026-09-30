@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
-import { api, useCompany } from "@/components/company-context";
+import { ReportsNav } from "@/components/reports-nav";
 import { formatINR, formatDate } from "@/lib/utils";
 import { NoCompanySelected } from "@/components/empty-state";
 
@@ -35,6 +35,7 @@ export default function SalesReportPage() {
 
   return (
     <div className="space-y-6">
+      <ReportsNav />
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-semibold">Sales report</h1>
         <a href={`/api/reports/export?type=sales`} target="_blank" rel="noreferrer">

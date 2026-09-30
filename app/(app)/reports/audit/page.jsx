@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useCompany, api } from "@/components/company-context";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { format } from "date-fns";
+import { ReportsNav } from "@/components/reports-nav";
 
 export default function AuditLogPage() {
   const { active } = useCompany();
@@ -29,6 +30,7 @@ export default function AuditLogPage() {
 
   return (
     <div className="space-y-6">
+      <ReportsNav />
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Audit Log (Edit History)</h1>
       </div>

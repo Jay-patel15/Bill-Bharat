@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/input";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { api, useCompany } from "@/components/company-context";
+import { ReportsNav } from "@/components/reports-nav";
 import { formatINR } from "@/lib/utils";
 import { NoCompanySelected } from "@/components/empty-state";
 
@@ -32,6 +32,7 @@ export default function GstReportPage() {
 
   return (
     <div className="space-y-6">
+      <ReportsNav />
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-semibold">GST report</h1>
         <Button 

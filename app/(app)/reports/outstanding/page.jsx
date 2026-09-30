@@ -5,7 +5,7 @@ import { ArrowLeft, FileDown, Loader2, AlertCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
-import { api, useCompany } from "@/components/company-context";
+import { ReportsNav } from "@/components/reports-nav";
 import { formatINR, formatDate, diffDays } from "@/lib/utils";
 import { NoCompanySelected } from "@/components/empty-state";
 
@@ -120,6 +120,7 @@ export default function OutstandingDuesReportPage() {
 
   return (
     <div className="space-y-6">
+      <ReportsNav />
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <Link href="/reports">

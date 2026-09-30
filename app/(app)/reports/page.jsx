@@ -1,17 +1,21 @@
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ReportsNav } from "@/components/reports-nav";
 
 const REPORTS = [
   { href: "/reports/sales", title: "Sales report", desc: "Invoice-level sales with tax breakdown." },
   { href: "/reports/gst", title: "GST report", desc: "GSTR-friendly summary of CGST, SGST, IGST." },
   { href: "/reports/finance", title: "Finance overview", desc: "Receivables, payables, profit." },
-  { href: "/reports/outstanding", title: "Outstanding dues", desc: "Outstanding dues grouped by customer." }
+  { href: "/reports/outstanding", title: "Outstanding dues", desc: "Outstanding dues grouped by customer." },
+  { href: "/reports/daybook", title: "Day Book (Rojmel)", desc: "Daily ledger register for sales, Jama, Udhar & site expenses." },
+  { href: "/reports/audit", title: "Audit log", desc: "System change logs and deletion records." }
 ];
 
 export default function ReportsHub() {
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Reports</h1>
+      <ReportsNav />
+      <h1 className="text-2xl font-semibold">Reports Overview</h1>
       <div className="grid gap-4 md:grid-cols-3">
         {REPORTS.map((r) => (
           <Link key={r.href} href={r.href}>
