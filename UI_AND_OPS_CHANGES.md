@@ -40,6 +40,12 @@ This document tracks all functional, UI, database, navigation, and operational f
 - **Offline Storage**: Replaced PostgreSQL (`pg`) with 100% offline WebAssembly SQLite (`node-sqlite3-wasm`) writing to `./.data/billbharat.db`.
 - **Foreign Key Auto-Seeding (`lib/auth.js`)**: Resolved `SQLite3Error: FOREIGN KEY constraint failed` under `DEV_BYPASS_AUTH=1` by ensuring the default `dev-user-id` is automatically seeded into the `users` table upon startup.
 
+### 6. Day Book Receipt & Payment Double-Entry Accounting (`lib/accounting.js`)
+- **Payment Receipt Voucher Integration**: Created `recordPaymentAccounting()` helper so every full or partial customer payment (e.g. ₹385 Cash, ₹500 UPI) automatically posts `RECEIPT` double-entry records to `ledger_entries`:
+  - **Debit**: Cash or Bank Account (Money Received)
+  - **Credit**: Customer Ledger (Decrements Debtors balance / Jama)
+- **Auto-Sync & Cleanup**: Updated Day Book API (`/api/reports/daybook` and `/api/reports/daybook/sync`) to automatically sync all existing and new partial payments into the Day Book (Rojmel), and clean up ledger entries if a payment is deleted.
+
 ---
 
 ## Answers to Repository Questions

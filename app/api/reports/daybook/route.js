@@ -1,6 +1,6 @@
 import { fail, ok, readBody, withUser } from "@/lib/api";
 import { assertCompanyAccess, getCompanyIdFromRequest, findWhere, findById } from "@/lib/db";
-import { recordLedgerEntry } from "@/lib/accounting";
+import { recordLedgerEntry, recordPaymentAccounting } from "@/lib/accounting";
 import { expenseEntrySchema } from "@/lib/validations";
 
 export async function GET(req) {
@@ -8,14 +8,38 @@ export async function GET(req) {
     try {
       const companyId = getCompanyIdFromRequest(req);
       await assertCompanyAccess(user, companyId);
-      
+
+      // Auto-sync unsynced payments into Day Book
+      const payments = await findWhere("payments", { companyId });
+      const existingEntries = await findWhere("ledger_entries", { companyId });
+      const sales = await findWhere("sales", { companyId });
+
+      for (const payment of (payments || [])) {
+        const hasAccounting = existingEntries.some(e => e.refId === payment.id);
+        if (!hasAccounting) {
+          let partyName = "Customer";
+          let refDocNumber = "";
+          if (payment.type === "SALE" && payment.refId) {
+            const sale = (sales || []).find(s => s.id === payment.refId);
+            if (sale) {
+              refDocNumber = sale.invoiceNumber;
+              if (sale.customerId) {
+                const cust = await findById("customers", sale.customerId);
+                if (cust) partyName = cust.name;
+              }
+            }
+          }
+          await recordPaymentAccounting(payment, partyName, refDocNumber);
+        }
+      }
+
       const entries = await findWhere("ledger_entries", { companyId });
       entries.sort((a, b) => {
         const dateDiff = String(b.date || "").localeCompare(String(a.date || ""));
         if (dateDiff !== 0) return dateDiff;
         return String(b.createdAt || "").localeCompare(String(a.createdAt || ""));
       });
-      
+
       return ok(entries);
     } catch (e) { return fail(e.message, e.status || 500); }
   });

@@ -1,5 +1,6 @@
 import { fail, ok, readBody, withUser } from "@/lib/api";
 import { assertCompanyAccess, findById, findWhere, insert, update } from "@/lib/db";
+import { recordPaymentAccounting } from "@/lib/accounting";
 
 export async function POST(req, { params }) {
   return withUser(async (user) => {
@@ -42,14 +43,18 @@ export async function POST(req, { params }) {
         status: newStatus
       });
 
-      // 3. Update customer outstanding balance if customer exists
+      // 3. Update customer outstanding balance & record ledger entry for Day Book
+      let customerName = "Customer";
       if (sale.customerId) {
         const customer = await findById("customers", sale.customerId);
         if (customer) {
+          customerName = customer.name;
           const newOutstanding = Math.max(0, Number(customer.outstanding || 0) - amount);
           await update("customers", customer.id, { outstanding: newOutstanding });
         }
       }
+
+      await recordPaymentAccounting(payment, customerName, sale.invoiceNumber);
 
       return ok({ payment, amountPaid: newTotalPaid, status: newStatus });
     } catch (e) {

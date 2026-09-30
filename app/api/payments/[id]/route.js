@@ -47,6 +47,22 @@ export async function DELETE(_req, { params }) {
       await assertCompanyAccess(user, payment.companyId);
 
       const saleId = payment.refId;
+      if (saleId && payment.type === "SALE") {
+        const sale = await findById("sales", saleId);
+        if (sale && sale.customerId) {
+          const customer = await findById("customers", sale.customerId);
+          if (customer) {
+            await update("customers", customer.id, {
+              outstanding: Number(customer.outstanding || 0) + Number(payment.amount || 0)
+            });
+          }
+        }
+      }
+
+      // Remove matching ledger entries for this payment
+      const { query } = await import("@/lib/db/sqlite");
+      await query("DELETE FROM ledger_entries WHERE refId = $1", [params.id]);
+
       await remove("payments", params.id, user.id);
       if (saleId) await recalcSale(saleId);
       return ok({ deleted: true });
