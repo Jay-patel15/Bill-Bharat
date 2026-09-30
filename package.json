@@ -2,15 +2,21 @@
   "name": "billbharat",
   "version": "1.0.0",
   "private": true,
+  "description": "Offline GST invoicing, inventory and finance for Indian businesses",
+  "author": "BillBharat",
+  "main": "electron/main.js",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "dev:app": "electron .",
+    "build": "next build && node scripts/prepare-standalone.mjs",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "check": "node scripts/check-db.mjs",
+    "dist": "npm run build && electron-builder",
+    "dist:dir": "npm run build && electron-builder --dir"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
-    "@supabase/supabase-js": "^2.45.4",
     "bcryptjs": "^2.4.3",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
@@ -19,7 +25,7 @@
     "jspdf-autotable": "^3.8.4",
     "lucide-react": "^0.460.0",
     "next": "14.2.18",
-    "pg": "^8.21.0",
+    "node-sqlite3-wasm": "^0.8.60",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "recharts": "^2.13.3",
@@ -29,6 +35,8 @@
   },
   "devDependencies": {
     "autoprefixer": "^10.4.20",
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
     "eslint": "^8.57.1",
     "eslint-config-next": "14.2.18",
     "postcss": "^8.4.49",
@@ -36,5 +44,43 @@
   },
   "engines": {
     "node": ">=20.x"
+  },
+  "build": {
+    "appId": "com.billbharat.desktop",
+    "productName": "BillBharat",
+    "asar": false,
+    "files": [
+      "electron/**/*",
+      "package.json",
+      "!node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": ".next/standalone",
+        "to": "server"
+      }
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "artifactName": "BillBharat-${version}-${arch}.${ext}",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "BillBharat"
+    },
+    "portable": {
+      "artifactName": "BillBharat-${version}-portable.exe"
+    },
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    }
   }
 }

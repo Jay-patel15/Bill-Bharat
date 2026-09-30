@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { api, useCompany } from "@/components/company-context";
 import { useToast } from "@/components/ui/toast";
 import { formatINR } from "@/lib/utils";
-import { GST_SLABS } from "@/lib/gst";
+import { GST_SLABS, GST_UNITS } from "@/lib/gst";
 import { NoCompanySelected } from "@/components/empty-state";
 
 
@@ -132,7 +132,7 @@ export default function InventoryPage() {
             <Table>
               <THead>
                 <TR>
-                  <TH>Name</TH><TH>SKU</TH><TH>HSN</TH><TH>GST</TH>
+                  <TH>Name</TH><TH>SKU</TH><TH>HSN</TH><TH>Unit</TH><TH>GST</TH>
                   <TH className="text-right">Buy</TH>
                   <TH className="text-right">Sell</TH>
                   <TH className="text-right">Stock</TH>
@@ -150,11 +150,12 @@ export default function InventoryPage() {
                       </TD>
                       <TD>{it.sku || "—"}</TD>
                       <TD>{it.hsnCode || "—"}</TD>
+                      <TD><Badge variant="outline">{it.unit || "PCS"}</Badge></TD>
                       <TD>{it.gstRate}%</TD>
                       <TD className="text-right">{formatINR(it.purchasePrice)}</TD>
                       <TD className="text-right">{formatINR(it.sellingPrice)}</TD>
                       <TD className="text-right">
-                        <span className={low ? "text-amber-600 font-semibold" : ""}>{it.quantity}</span>
+                        <span className={low ? "text-amber-600 font-semibold" : ""}>{it.quantity} {it.unit || "PCS"}</span>
                         {low ? <Badge variant="warning" className="ml-2">Low</Badge> : null}
                       </TD>
                       <TD className="text-right space-x-1">
@@ -182,6 +183,11 @@ export default function InventoryPage() {
             <Button form="inv-form" type="submit" disabled={loading}>{loading ? "Saving…" : "Save"}</Button>
           </>
         }>
+        <datalist id="gst-unit-list-inv">
+          {GST_UNITS.map((u) => (
+            <option key={u} value={u} />
+          ))}
+        </datalist>
         <form id="inv-form" onSubmit={onSubmit} className="grid gap-4 md:grid-cols-2">
           <Field label="Name *"><Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
           <Field label="SKU"><Input value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} /></Field>
@@ -194,7 +200,14 @@ export default function InventoryPage() {
               {GST_SLABS.map((r) => <option key={r} value={r}>{r}%</option>)}
             </Select>
           </Field>
-          <Field label="Unit"><Input value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} /></Field>
+          <Field label="Unit">
+            <Input
+              list="gst-unit-list-inv"
+              placeholder="e.g. PCS, NOS, KG, L"
+              value={form.unit || "PCS"}
+              onChange={(e) => setForm({ ...form, unit: e.target.value.toUpperCase() })}
+            />
+          </Field>
           <Field label="Quantity in stock">
             <Input type="number" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: Number(e.target.value) })} />
           </Field>

@@ -19,16 +19,16 @@ You are a strict, senior DevSecOps engineer and Full-Stack Architect. Your prima
 * Frontend route guards are insufficient; all sensitive API routes must verify the user's session or token server-side.
 * Implement Role-Based Access Control (RBAC) where applicable.
 
-### 3. Database Security & Row Level Security (RLS)
-* Enforce strict RLS policies for EVERY table in PostgreSQL/Supabase.
-* **Default Deny:** Deny all access by default. Users must only be able to read/write their own company data via strict tenant checks.
-* **Never Test in Production:** NEVER use `allow read, write: if true;` or leave RLS disabled.
-* **Supabase Optimization:** Wrap auth checks in a select statement: `USING ((select auth.uid()) = user_id)`.
-* **Client Safety:** NEVER use `service_role` keys or initialize the Admin SDK in client-side code.
+### 3. Database Security & Tenant Isolation
+* The database is a **local SQLite file** (`billbharat.db`) reachable only by the app process on this machine. There is no network listener and no database server, so RLS has no engine to run in.
+* **Tenant isolation is enforced in the application layer**, in `assertCompanyAccess()` (`lib/db.js`): every route resolves the acting user from the session and rejects any `companyId` it does not own. This is the only gate, so it must never be skipped in a new route.
+* **Default Deny:** every protected route goes through `withUser()`/`requireUser()`, which fails closed when there is no valid session.
+* Foreign keys are enforced (`PRAGMA foreign_keys = ON`) so orphaned tenant rows cannot be created.
 
-### 4. API & Rate Limiting
-* Implement strict Rate Limiting on all public-facing endpoints (10 req/min for auth, 100 req/min for API) to prevent brute-force attacks.
-* Configure explicit CORS policies. Never use `Access-Control-Allow-Origin: *` for endpoints handling authenticated data.
+### 4. API Hardening
+* Rate limiting was removed with the move to a local desktop app: the server binds to `127.0.0.1` on an ephemeral port and is not reachable from the network, so there is no remote brute-force surface to throttle. **Reinstate it if this is ever exposed over a network again.**
+* Password hashing (bcrypt) remains the brute-force control for the login form itself.
+* No CORS configuration is needed while the only origin is the app's own loopback server.
 
 ### 5. Client-Side & Input Protections
 * Validate all incoming API payloads using strict schema validation (Zod). Fail closed if validation fails.
@@ -53,8 +53,8 @@ flowchart TD
     end
 
     subgraph Security["DevSecOps & Middleware Security Guard"]
-        MW["middleware.js (JWT Cookie Guard & Security Headers)"]
-        RL["Rate Limiter (lib/rate-limit.js - Max 10 req/min auth)"]
+        MW["middleware.js (Cookie-Presence Routing Gate & Security Headers)"]
+        Auth["Session Verification (lib/auth.js - per request, server-side)"]
         Zod["Zod Payload Validator (lib/validations.js)"]
     end
 
@@ -74,16 +74,17 @@ flowchart TD
         PDFGen["jsPDF Invoicing Generator (Builder & Site Boxed Format)"]
     end
 
-    subgraph Database["Database & Row Level Security"]
-        PG["PostgreSQL (20-Connection Pooler / lib/db/postgres.js)"]
-        RLS["Row Level Security Policies (12 Tables)"]
+    subgraph Database["Local Storage (no server, no network)"]
+        SQLite["SQLite file - billbharat.db (lib/db/sqlite.js)"]
+        Files["Local file storage - invoices, logos (lib/storage/local.js)"]
+        Tenant["App-Layer Tenant Isolation (assertCompanyAccess, 12 Tables)"]
     end
 
     UI --> Ctx
     Ctx --> Nav
     Nav --> MW
-    MW --> RL
-    RL --> Zod
+    MW --> Auth
+    Auth --> Zod
     Zod --> API
 
     SalesAPI --> GSTEngine
@@ -93,8 +94,9 @@ flowchart TD
     PurchasesAPI --> GeminiAI
     PurchasesAPI --> AccountingEngine
 
-    AccountingEngine --> PG
-    PG --> RLS
+    AccountingEngine --> SQLite
+    SQLite --> Tenant
+    PDFGen --> Files
 ```
 
 ---
@@ -109,7 +111,7 @@ sequenceDiagram
     participant MW as Middleware & Zod Guard
     participant API as API Route Handler
     participant Acc as Double-Entry Accounting Engine
-    participant DB as PostgreSQL (Supabase RLS)
+    participant DB as Local SQLite (app-layer tenant isolation)
 
     User->>App: 1. Login / Select Active Company
     App->>MW: Authenticate JWT Token Cookie
@@ -118,7 +120,7 @@ sequenceDiagram
     alt Option A: Create Sales Invoice (Billed to Builder for Specific Site)
         User->>App: Select Builder (Customer), Select/Type Site Name, Items, Rate & Tax
         App->>MW: POST /api/sales (Payload)
-        MW->>MW: Validate with Zod saleSchema & Check Rate Limit
+        MW->>MW: Verify session server-side & validate with Zod saleSchema
         MW->>API: Route Handler
         API->>API: Compute Intra-State (CGST+SGST) vs Inter-State (IGST)
         API->>DB: Insert into 'sales' table & Deduct Inventory Stock
@@ -200,7 +202,7 @@ flowchart LR
     I -- IN (Jama) --> J["Debit: Cash/Bank Account\nCredit: Category [Site Tag]"]
     I -- OUT (Udhar) --> K["Debit: Category [Site Tag]\nCredit: Cash/Bank Account"]
 
-    J --> L["Insert into 'ledger_entries' Table in Postgres"]
+    J --> L["Insert into 'ledger_entries' Table in local SQLite"]
     K --> L
     L --> M["Live Update Day Book Table & Balances"]
 ```
@@ -322,15 +324,15 @@ erDiagram
 
 | Feature Category | TallyPrime (Standard) | BillBharat (Your Software) | Advantage |
 | :--- | :--- | :--- | :--- |
-| **Accessibility** | Desktop-based. Requires "Tally on Cloud" (extra cost) for remote access. | **Native Cloud-First**. Accessible from any browser (Phone, Tablet, Laptop) via Vercel. | **BillBharat**: Real-time access from sites or on the go without setup. |
+| **Accessibility** | Desktop-based. Requires "Tally on Cloud" (extra cost) for remote access. | **Desktop app, fully offline.** Installs as a Windows exe; the whole app is a modern web UI running locally. | **Parity**: like Tally, it runs on the machine — but with no license server and no internet dependency. |
 | **User Interface** | Keyboard-centric, legacy "Green-Screen" style. Steep learning curve. | **Modern Web UI**. Clean, intuitive dashboards with visual charts (Recharts). | **BillBharat**: No training required; feels like a modern app. |
 | **Data Entry** | Manual entry for every ledger and stock item. | **AI-Powered Extraction**. Automatically reads purchase & sales bills via Gemini AI. | **BillBharat**: Saves 90% of time on procurement data entry. |
 | **Procurement (Purchases)** | Requires manual matching of supplier names to internal items. | **Smart Mapping & Master CSV Import**. Learns vendor product names & maps to inventory. | **BillBharat**: Eliminates manual product name reconciliation. |
 | **Inventory Management** | Traditional stock tracking. Prone to duplicate SKUs (e.g., "Steel" vs "Steel 10mm"). | **Similarity Matching**. Uses AI logic to detect and merge duplicate items. | **BillBharat**: Keeps your inventory catalog clean and professional. |
 | **Project / BOQ Tracking** | Basic cost centers; requires complex setup to track project progress. | **Native Site Passbook (Jama/Udhar)** & BOQ progress tracking. | **BillBharat**: Built specifically for builders/contractors to see project health. |
 | **Multi-Tenancy** | Requires switching "Company" files; data is siloed in local folders. | **Switchable Company Context**. Managed from a single login with instant switching. | **BillBharat**: Manage multiple businesses/firms seamlessly. |
-| **Collaboration** | Single-user (Silver) or LAN-based Multi-user (Gold). | **Infinite Users**. Multiple staff can work on sales/purchases simultaneously. | **BillBharat**: Better for growing teams with site supervisors. |
-| **Deployment & Cost** | High upfront license fee + annual Renewal (TSS). | **Scale-as-you-go**. Hosted on Supabase/Vercel with minimal infra costs. | **BillBharat**: Zero upfront licensing fees. |
+| **Collaboration** | Single-user (Silver) or LAN-based Multi-user (Gold). | **Single machine, multiple user accounts.** Staff log in with their own credentials on that PC; concurrent multi-device access would need a networked deployment. | **Parity**: comparable to Tally Silver today. |
+| **Deployment & Cost** | High upfront license fee + annual Renewal (TSS). | **Zero infrastructure.** One installer, no server, no subscription, no per-seat fee. | **BillBharat**: no licensing or hosting cost at all. |
 
 ---
 

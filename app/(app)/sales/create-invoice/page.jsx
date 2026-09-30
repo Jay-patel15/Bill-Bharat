@@ -8,7 +8,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
 import { api, useCompany } from "@/components/company-context";
 import { useToast } from "@/components/ui/toast";
-import { computeInvoice, gstStateFromGstin, GST_SLABS } from "@/lib/gst";
+import { computeInvoice, gstStateFromGstin, GST_SLABS, GST_UNITS } from "@/lib/gst";
 import { formatINR, nextInvoiceNumber, DOCUMENT_TYPES, getDocumentType, formatInvoiceNotes, STATES } from "@/lib/utils";
 import { NoCompanySelected } from "@/components/empty-state";
 
@@ -364,24 +364,30 @@ export default function CreateInvoicePage() {
           </Button>
         </CardHeader>
         <CardContent className="space-y-2">
+          <datalist id="gst-unit-list">
+            {GST_UNITS.map((u) => (
+              <option key={u} value={u} />
+            ))}
+          </datalist>
           <div className={`grid gap-2 text-xs text-muted-foreground px-2 ${
             dt.taxable
-              ? "grid-cols-[2fr_1fr_0.6fr_1fr_0.8fr_0.8fr_1fr_2.4rem]"
-              : "grid-cols-[3fr_1fr_0.7fr_1fr_2.4rem]"
+              ? "grid-cols-[2fr_0.9fr_0.5fr_0.7fr_0.9fr_0.7fr_0.7fr_1fr_2.4rem]"
+              : "grid-cols-[3fr_1fr_0.6fr_0.8fr_2.4rem]"
           }`}>
             <div>Item</div>
             <div>HSN</div>
             <div>Qty</div>
-            {dt.taxable
-              ? <><div>Rate</div><div>GST%</div><div>Disc</div><div className="text-right">Total</div></>
-              : <><div>Unit</div></>}
+            <div>Unit</div>
+            {dt.taxable && (
+              <><div>Rate</div><div>GST%</div><div>Disc</div><div className="text-right">Total</div></>
+            )}
             <div />
           </div>
           {items.map((it, i) => (
             <div key={i} className={`grid gap-2 items-start ${
               dt.taxable
-                ? "grid-cols-[2fr_1fr_0.6fr_1fr_0.8fr_0.8fr_1fr_2.4rem]"
-                : "grid-cols-[3fr_1fr_0.7fr_1fr_2.4rem]"
+                ? "grid-cols-[2fr_0.9fr_0.5fr_0.7fr_0.9fr_0.7fr_0.7fr_1fr_2.4rem]"
+                : "grid-cols-[3fr_1fr_0.6fr_0.8fr_2.4rem]"
             }`}>
               <div className="space-y-1">
                 <Select value={it.inventoryId} onChange={(e) => pickInventory(i, e.target.value)}>
@@ -392,7 +398,13 @@ export default function CreateInvoicePage() {
               </div>
               <Input value={it.hsnCode} onChange={(e) => setItem(i, { hsnCode: e.target.value })} />
               <Input type="number" min={0} step="0.01" value={it.quantity} onChange={(e) => setItem(i, { quantity: Number(e.target.value) })} />
-              {dt.taxable ? (
+              <Input
+                list="gst-unit-list"
+                placeholder="Unit"
+                value={it.unit || "PCS"}
+                onChange={(e) => setItem(i, { unit: e.target.value.toUpperCase() })}
+              />
+              {dt.taxable && (
                 <>
                   <Input type="number" min={0} step="0.01" value={it.sellingPrice} onChange={(e) => setItem(i, { sellingPrice: Number(e.target.value) })} />
                   <Select value={it.gstRate} onChange={(e) => setItem(i, { gstRate: Number(e.target.value) })}>
@@ -401,8 +413,6 @@ export default function CreateInvoicePage() {
                   <Input type="number" min={0} step="0.01" value={it.discount} onChange={(e) => setItem(i, { discount: Number(e.target.value) })} />
                   <div className="text-right pt-2 text-sm">{formatINR(computed.items[i]?.total || 0)}</div>
                 </>
-              ) : (
-                <Input value={it.unit} onChange={(e) => setItem(i, { unit: e.target.value })} placeholder="PCS" />
               )}
               <Button variant="ghost" size="icon" onClick={() => setItems((a) => a.filter((_, idx) => idx !== i))}>
                 <Trash2 className="h-4 w-4" />

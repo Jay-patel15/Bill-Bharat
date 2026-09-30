@@ -33,7 +33,9 @@ export default function SaleDetailPage({ params }) {
       setSale(data);
       setItems(data.items || []);
       setPayments(data.payments || []);
-      if (data.notes) {
+      if (data.pdfUrl) setPdfLink(data.pdfUrl);
+      else if (data.notes) {
+        // Legacy invoices stored the saved-PDF link inside notes metadata.
         const { drivePdfUrl } = parseInvoiceNotes(data.notes);
         if (drivePdfUrl) setPdfLink(drivePdfUrl);
       }
@@ -100,14 +102,14 @@ export default function SaleDetailPage({ params }) {
 
   async function persistPdf() {
     try {
-      toast({ type: "info", title: "Uploading invoice PDF to Drive…" });
-      const res = await fetch(`/api/sales/${sale.id}/pdf`);
+      toast({ type: "info", title: "Saving invoice PDF…" });
+      const res = await fetch(`/api/sales/${sale.id}/pdf?save=1`);
       const json = await res.json();
-      if (json.ok && json.data?.drivePdfUrl) {
-        setPdfLink(json.data.drivePdfUrl);
-        toast({ type: "success", title: "PDF saved to Google Drive", message: json.data.drivePdfUrl });
-      } else throw new Error(json.error || "Failed to upload");
-    } catch (e) { toast({ type: "error", title: "Could not save PDF to Drive", message: e.message }); }
+      if (json.ok && json.pdfUrl) {
+        setPdfLink(json.pdfUrl);
+        toast({ type: "success", title: "PDF saved", message: json.pdfUrl });
+      } else throw new Error(json.error || "Failed to save");
+    } catch (e) { toast({ type: "error", title: "Could not save PDF", message: e.message }); }
   }
 
   function shareWhatsApp() {
@@ -132,7 +134,7 @@ export default function SaleDetailPage({ params }) {
           <a href={`/api/sales/${sale.id}/pdf`} target="_blank" rel="noreferrer">
             <Button variant="outline" title="View or Download PDF"><Download className="h-4 w-4" /> PDF</Button>
           </a>
-          <Button variant="outline" onClick={persistPdf} title="Save invoice PDF to Google Drive"><Save className="h-4 w-4" /> Save to Drive</Button>
+          <Button variant="outline" onClick={persistPdf} title="Save a copy of the invoice PDF"><Save className="h-4 w-4" /> Save PDF</Button>
           <Button variant="outline" onClick={shareWhatsApp} title="Share invoice details on WhatsApp"><Share2 className="h-4 w-4" /> WhatsApp</Button>
         </div>
       </div>
@@ -144,7 +146,7 @@ export default function SaleDetailPage({ params }) {
             <Table>
               <THead>
                 <TR>
-                  <TH>Item</TH><TH>HSN</TH><TH className="text-right">Qty</TH>
+                  <TH>Item</TH><TH>HSN</TH><TH className="text-right">Qty</TH><TH>Unit</TH>
                   <TH className="text-right">Rate</TH><TH className="text-right">Tax</TH>
                   <TH className="text-right">Total</TH>
                 </TR>
@@ -155,6 +157,7 @@ export default function SaleDetailPage({ params }) {
                     <TD>{it.name}</TD>
                     <TD>{it.hsnCode || "—"}</TD>
                     <TD className="text-right">{it.quantity}</TD>
+                    <TD>{it.unit || "PCS"}</TD>
                     <TD className="text-right">{formatINR(it.sellingPrice)}</TD>
                     <TD className="text-right">{formatINR((it.cgst || 0) + (it.sgst || 0) + (it.igst || 0))}</TD>
                     <TD className="text-right font-medium">{formatINR(it.total)}</TD>

@@ -4,7 +4,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
-import { computeInvoice, gstStateFromGstin, GST_SLABS } from "@/lib/gst";
+import { computeInvoice, gstStateFromGstin, GST_SLABS, GST_UNITS } from "@/lib/gst";
 import { formatINR } from "@/lib/utils";
 import { useCompany, api } from "./company-context";
 
@@ -90,15 +90,26 @@ export function PurchaseForm({ initial = {}, onSubmit, submitLabel = "Save purch
           </Button>
         </CardHeader>
         <CardContent className="space-y-2">
-          <div className="grid grid-cols-[2fr_1fr_0.7fr_0.6fr_1fr_0.7fr_0.7fr_1fr_2.4rem] gap-2 text-xs text-muted-foreground px-2">
-            <div>Item</div><div>HSN</div><div>SKU</div><div>Qty</div><div>Buy</div><div>GST%</div><div>Disc</div><div className="text-right">Total</div><div />
+          <datalist id="gst-unit-list-purchase">
+            {GST_UNITS.map((u) => (
+              <option key={u} value={u} />
+            ))}
+          </datalist>
+          <div className="grid grid-cols-[2fr_0.8fr_0.6fr_0.5fr_0.6fr_0.9fr_0.6fr_0.6fr_1fr_2.4rem] gap-2 text-xs text-muted-foreground px-2">
+            <div>Item</div><div>HSN</div><div>SKU</div><div>Qty</div><div>Unit</div><div>Buy</div><div>GST%</div><div>Disc</div><div className="text-right">Total</div><div />
           </div>
           {items.map((it, i) => (
-            <div key={i} className="grid grid-cols-[2fr_1fr_0.7fr_0.6fr_1fr_0.7fr_0.7fr_1fr_2.4rem] gap-2 items-start">
+            <div key={i} className="grid grid-cols-[2fr_0.8fr_0.6fr_0.5fr_0.6fr_0.9fr_0.6fr_0.6fr_1fr_2.4rem] gap-2 items-start">
               <Input placeholder="Item name" value={it.name} onChange={(e) => setItem(i, { name: e.target.value })} />
               <Input value={it.hsnCode} onChange={(e) => setItem(i, { hsnCode: e.target.value })} />
               <Input value={it.sku} onChange={(e) => setItem(i, { sku: e.target.value })} />
               <Input type="number" min={0} step="0.01" value={it.quantity} onChange={(e) => setItem(i, { quantity: Number(e.target.value) })} />
+              <Input
+                list="gst-unit-list-purchase"
+                placeholder="Unit"
+                value={it.unit || "PCS"}
+                onChange={(e) => setItem(i, { unit: e.target.value.toUpperCase() })}
+              />
               <Input type="number" min={0} step="0.01" value={it.purchasePrice} onChange={(e) => setItem(i, { purchasePrice: Number(e.target.value) })} />
               <Select value={it.gstRate} onChange={(e) => setItem(i, { gstRate: Number(e.target.value) })}>
                 {GST_SLABS.map((r) => <option key={r} value={r}>{r}%</option>)}

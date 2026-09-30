@@ -21,7 +21,7 @@ export default async function AuthLayout({ children }) {
               <li>✓ Multi-company GSTIN support (CGST/SGST/IGST)</li>
               <li>✓ Auto-PDF invoices with bank details & T&C</li>
               <li>✓ AI reads purchase PDFs and updates inventory</li>
-              <li>✓ Google Sheets + Drive backend — your data, your storage</li>
+              <li>✓ Runs fully offline — your data stays on this machine</li>
             </ul>
           </div>
           <div className="text-xs text-slate-400">© {new Date().getFullYear()} BillBharat</div>

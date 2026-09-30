@@ -1,7 +1,7 @@
 import { fail, withUser } from "@/lib/api";
 import { assertCompanyAccess, findById, update } from "@/lib/db";
 import { generateInvoicePdf } from "@/lib/pdf";
-import { uploadFile } from "@/lib/storage/supabase";
+import { uploadFile } from "@/lib/storage/local";
 import { getDocumentType, parseInvoiceNotes } from "@/lib/utils";
 
 export async function GET(req, { params }) {
@@ -56,20 +56,24 @@ export async function GET(req, { params }) {
       let fileUrl = sale.pdfUrl || "";
 
       if (saveRequested || !sale.pdfUrl) {
-        if (process.env.GOOGLE_DRIVE_FOLDER_ID?.trim() && process.env.GOOGLE_CREDENTIALS_JSON?.trim()) {
-          try {
-            const { uploadToGoogleDrive } = await import("@/lib/storage/drive");
-            const driveFile = await uploadToGoogleDrive(pdfBuffer, `${sale.invoiceNumber}.pdf`, "application/pdf");
-            fileUrl = driveFile.webViewLink;
-            await update("sales", sale.id, { pdfUrl: fileUrl });
-          } catch (driveErr) {
-            console.error("Google Drive upload error:", driveErr.message);
-          }
+        try {
+          const saved = await uploadFile({
+            data: pdfBuffer,
+            filename: `${sale.invoiceNumber || sale.id}.pdf`,
+            mimeType: "application/pdf",
+            subfolder: "invoices"
+          });
+          fileUrl = saved.viewUrl;
+          await update("sales", sale.id, { pdfUrl: fileUrl });
+        } catch (saveErr) {
+          // A failed archive copy must not block viewing the PDF.
+          console.error("PDF save error:", saveErr.message);
+          if (saveRequested) return fail(saveErr.message || "Could not save PDF", 500);
         }
       }
 
       if (saveRequested) {
-        return new Response(JSON.stringify({ ok: true, pdfUrl: fileUrl, message: "Saved to Google Drive" }), {
+        return new Response(JSON.stringify({ ok: true, pdfUrl: fileUrl, message: "PDF saved" }), {
           headers: { "content-type": "application/json" }
         });
       }

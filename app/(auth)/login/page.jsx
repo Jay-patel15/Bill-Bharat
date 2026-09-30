@@ -58,15 +58,6 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        <div className="my-4 flex items-center gap-2 text-xs text-muted-foreground">
-          <div className="h-px flex-1 bg-border" /> OR <div className="h-px flex-1 bg-border" />
-        </div>
-        <a href="/api/auth/google" className="block">
-          <Button variant="outline" className="w-full" type="button">
-            Continue with Google
-          </Button>
-        </a>
-
         <div className="mt-4 flex items-center justify-between text-sm">
           <Link href="/forgot-password" className="text-primary hover:underline">Forgot password?</Link>
           <Link href="/signup" className="text-primary hover:underline">Create account</Link>

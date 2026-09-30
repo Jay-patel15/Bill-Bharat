@@ -4,14 +4,13 @@ out
 .env
 .env.local
 .env.*.local
-.vercel
 *.log
 .DS_Store
-service-account.json
 
-# Local dev data
+# Local database + uploaded files (dev). The packaged app stores these
+# under %APPDATA%\BillBharat instead.
 .data/
-public/uploads/
 
-# Supabase schema — local only, never commit
-supabase_schema.sql
+# Packaged installers and the scratch dir used by `npm run check`
+dist/
+.check-tmp/

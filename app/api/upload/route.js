@@ -1,5 +1,5 @@
 import { fail, ok, withUser } from "@/lib/api";
-import { uploadFile } from "@/lib/storage/supabase";
+import { uploadFile } from "@/lib/storage/local";
 
 export const runtime = "nodejs";
 
