@@ -145,6 +145,7 @@ middleware.js         - routing gate: redirects when no session cookie is presen
 
 ## UI and Ops Fixes Log
 
+- **Payment Recording API Fix (`/api/sales/[id]/payments`)**: Created missing `POST` and `GET` route handlers for `/api/sales/[id]/payments`. Recording partial or full payments on sales invoices previously threw `404 Not Found`. It now records payment receipts, updates customer outstanding balances, and auto-updates invoice status to `Partially Paid` or `Paid`.
 - **Unit Input Deletion & Backspace Fix**: Fixed input binding from `value={it.unit || "PCS"}` to `value={it.unit ?? ""}` across Invoice Creation (`app/(app)/sales/create-invoice/page.jsx`), Purchase Bills (`components/purchase-form.jsx`), and Inventory (`app/(app)/inventory/page.jsx`). Previously, backspacing or clearing "P" evaluated `"" || "PCS"` back to `"PCS"`, preventing users from deleting or editing the unit.
 - **Master GST Unit Auto-Suggestions**: Added `<datalist>` containing standard Indian GST accounting units (`PCS`, `NOS`, `KG`, `L`, `MTR`, `BOX`, `SET`, `SQFT`, `SQM`, `GMS`, `TON`, `BAG`, `BTL`, `PAC`, `DOZ`, `RFT`, `JOB`, `HRS`, `CAN`, `KLR`) while allowing custom text entry.
 - **Database & Foreign Key Auto-Seeding (`lib/auth.js`)**: Fixed `SQLite3Error: FOREIGN KEY constraint failed` on company creation under `DEV_BYPASS_AUTH=1` by automatically resolving/seeding the `dev-user-id` in the SQLite `users` table.

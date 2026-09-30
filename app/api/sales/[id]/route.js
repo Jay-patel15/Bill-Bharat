@@ -13,7 +13,7 @@ export async function GET(_req, { params }) {
     try {
       const { findWhere } = await import("@/lib/db");
       const sale = await loadSale(user, params.id);
-      const payments = await findWhere("payments", (p) => p.refId === sale.id && p.type === "SALE");
+      const payments = await findWhere("payments", { refId: sale.id });
       return ok({ ...sale, payments: (payments || []).sort((a, b) => new Date(b.date) - new Date(a.date)) });
     }
     catch (e) { return fail(e.message, e.status || 500); }

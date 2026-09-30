@@ -716,6 +716,7 @@ Locally that means local access only. **Do not expose this app on a network unti
 
 ### 10.6 Recent UI and Ops Fixes Log
 
+- **Payment Recording API Fix (`/api/sales/[id]/payments`)**: Created missing `POST` and `GET` route handlers for `/api/sales/[id]/payments`. Recording partial or full payments on sales invoices previously threw `404 Not Found`. It now records payment receipts, updates customer outstanding balances, and auto-updates invoice status to `Partially Paid` or `Paid`.
 - **Unit Input Deletion / Backspace Bug**: Fixed `value={it.unit || "PCS"}` fallback bug to `value={it.unit ?? ""}` across Create Invoice (`app/(app)/sales/create-invoice/page.jsx`), Purchase Form (`components/purchase-form.jsx`), and Inventory (`app/(app)/inventory/page.jsx`). Previously, clearing "P" evaluated `"" || "PCS"` back to `"PCS"`, preventing backspacing.
 - **GST Master Unit Suggestions**: Added `<datalist>` containing standard Indian GST accounting units (`PCS`, `NOS`, `KG`, `L`, `MTR`, `BOX`, `SET`, `SQFT`, `SQM`, `GMS`, `TON`, `BAG`, `BTL`, `PAC`, `DOZ`, `RFT`, `JOB`, `HRS`, `CAN`, `KLR`) while leaving the input open for custom units.
 - **Database & Foreign Key Auto-Seeding (`lib/auth.js`)**: Fixed `SQLite3Error: FOREIGN KEY constraint failed` when saving companies under `DEV_BYPASS_AUTH=1` by automatically resolving/seeding the `dev-user-id` in the SQLite `users` table.
