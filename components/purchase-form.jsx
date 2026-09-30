@@ -107,7 +107,7 @@ export function PurchaseForm({ initial = {}, onSubmit, submitLabel = "Save purch
               <Input
                 list="gst-unit-list-purchase"
                 placeholder="Unit"
-                value={it.unit || "PCS"}
+                value={it.unit ?? ""}
                 onChange={(e) => setItem(i, { unit: e.target.value.toUpperCase() })}
               />
               <Input type="number" min={0} step="0.01" value={it.purchasePrice} onChange={(e) => setItem(i, { purchasePrice: Number(e.target.value) })} />

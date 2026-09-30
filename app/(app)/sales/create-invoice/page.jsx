@@ -401,7 +401,7 @@ export default function CreateInvoicePage() {
               <Input
                 list="gst-unit-list"
                 placeholder="Unit"
-                value={it.unit || "PCS"}
+                value={it.unit ?? ""}
                 onChange={(e) => setItem(i, { unit: e.target.value.toUpperCase() })}
               />
               {dt.taxable && (

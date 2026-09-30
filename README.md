@@ -143,11 +143,12 @@ middleware.js         - routing gate: redirects when no session cookie is presen
 - Discounts apply per line and on the whole invoice; both reduce the taxable value before tax.
 - Round-off and amount-in-words are auto-included on the PDF.
 
-## Common issues
+## UI and Ops Fixes Log
 
-- *"JWT_SECRET not set"* — only affects `npm run dev`; copy `.env.example` to `.env.local` and set it. The packaged app manages its own.
-- *AI parse returns blank items* — the PDF is image-only. The default model reads text PDFs; use a higher-tier multimodal model for OCR.
-- *AI features error out* — expected with no `OPENROUTER_API_KEY` or `GEMINI_API_KEY`. Everything else works offline.
-- *Build hangs on Windows* — a previously started server may still be holding files in `.next`. Close it, then rebuild.
+- **Unit Input Deletion & Backspace Fix**: Fixed input binding from `value={it.unit || "PCS"}` to `value={it.unit ?? ""}` across Invoice Creation (`app/(app)/sales/create-invoice/page.jsx`), Purchase Bills (`components/purchase-form.jsx`), and Inventory (`app/(app)/inventory/page.jsx`). Previously, backspacing or clearing "P" evaluated `"" || "PCS"` back to `"PCS"`, preventing users from deleting or editing the unit.
+- **Master GST Unit Auto-Suggestions**: Added `<datalist>` containing standard Indian GST accounting units (`PCS`, `NOS`, `KG`, `L`, `MTR`, `BOX`, `SET`, `SQFT`, `SQM`, `GMS`, `TON`, `BAG`, `BTL`, `PAC`, `DOZ`, `RFT`, `JOB`, `HRS`, `CAN`, `KLR`) while allowing custom text entry.
+- **Database & Foreign Key Auto-Seeding (`lib/auth.js`)**: Fixed `SQLite3Error: FOREIGN KEY constraint failed` on company creation under `DEV_BYPASS_AUTH=1` by automatically resolving/seeding the `dev-user-id` in the SQLite `users` table.
+- **Local SQLite Engine (`lib/db/sqlite.js`)**: Completely removed PostgreSQL / `pg` dependencies in favor of 100% offline `node-sqlite3-wasm` local storage in `./.data/billbharat.db`.
+- **UI Table & PDF Unit Rendering**: Added `Unit` column visibility to the Items table in Create Invoice, Purchase Bills, Sale Detail view (`/sales/[id]`), and PDF invoice output (`lib/pdf.js`).
 
 Built with care for Indian SMBs.

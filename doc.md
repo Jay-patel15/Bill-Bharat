@@ -713,3 +713,11 @@ Locally that means local access only. **Do not expose this app on a network unti
 - **Emailing password resets.** The reset flow generates a one-hour link; with no mail service wired up, the link is returned in the API response — see [§10.3](#103-the-password-reset-endpoint-returns-the-reset-token-in-its-http-response).
 - **Multi-device / concurrent access.** One machine, one database file. Multiple user accounts work; simultaneous access from other devices would need a networked deployment — at which point restore rate limiting and reconsider the middleware trade-off in [§6.7](#67-authentication-and-sessions).
 - **Auto-update.** No update server. Shipping a new version means shipping a new installer; `%APPDATA%\BillBharat\data` is untouched by reinstalling.
+
+### 10.6 Recent UI and Ops Fixes Log
+
+- **Unit Input Deletion / Backspace Bug**: Fixed `value={it.unit || "PCS"}` fallback bug to `value={it.unit ?? ""}` across Create Invoice (`app/(app)/sales/create-invoice/page.jsx`), Purchase Form (`components/purchase-form.jsx`), and Inventory (`app/(app)/inventory/page.jsx`). Previously, clearing "P" evaluated `"" || "PCS"` back to `"PCS"`, preventing backspacing.
+- **GST Master Unit Suggestions**: Added `<datalist>` containing standard Indian GST accounting units (`PCS`, `NOS`, `KG`, `L`, `MTR`, `BOX`, `SET`, `SQFT`, `SQM`, `GMS`, `TON`, `BAG`, `BTL`, `PAC`, `DOZ`, `RFT`, `JOB`, `HRS`, `CAN`, `KLR`) while leaving the input open for custom units.
+- **Database & Foreign Key Auto-Seeding (`lib/auth.js`)**: Fixed `SQLite3Error: FOREIGN KEY constraint failed` when saving companies under `DEV_BYPASS_AUTH=1` by automatically resolving/seeding the `dev-user-id` in the SQLite `users` table.
+- **Local SQLite Engine (`lib/db/sqlite.js`)**: Removed PostgreSQL / `pg` dependencies in favor of 100% offline `node-sqlite3-wasm` local storage in `./.data/billbharat.db`.
+- **UI Table & PDF Unit Integration**: Added `Unit` column visibility to the Items table in Create Invoice, Purchase Bills, Sale Detail view (`/sales/[id]`), and PDF invoice output (`lib/pdf.js`).

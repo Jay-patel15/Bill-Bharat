@@ -204,7 +204,7 @@ export default function InventoryPage() {
             <Input
               list="gst-unit-list-inv"
               placeholder="e.g. PCS, NOS, KG, L"
-              value={form.unit || "PCS"}
+              value={form.unit ?? ""}
               onChange={(e) => setForm({ ...form, unit: e.target.value.toUpperCase() })}
             />
           </Field>
