@@ -11,6 +11,7 @@ export default function SignupPage() {
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [code, setCode] = useState("");
 
   async function onSubmit(e) {
     e.preventDefault();
@@ -23,11 +24,29 @@ export default function SignupPage() {
       });
       const json = await res.json();
       if (!res.ok || !json.ok) throw new Error(json.error || "Signup failed");
-      router.replace("/companies/create");
-      router.refresh();
+      setCode(json.data.recoveryCode);
     } catch (e) {
       setError(e.message);
     } finally { setLoading(false); }
+  }
+
+  if (code) {
+    return (
+      <Card className="w-full max-w-md">
+        <CardHeader>
+          <CardTitle>Save your recovery code</CardTitle>
+          <CardDescription>
+            It is the only way to reset your password. Write it down or print it and keep it away from this computer. It will not be shown again.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="select-all rounded border bg-muted p-3 text-center font-mono text-lg tracking-widest">{code}</p>
+          <Button className="w-full" autoFocus onClick={() => { router.replace("/companies/create"); router.refresh(); }}>
+            I have saved it, continue
+          </Button>
+        </CardContent>
+      </Card>
+    );
   }
 
   return (

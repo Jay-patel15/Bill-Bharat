@@ -1,5 +1,5 @@
 import { fail, ok, readBody, withUser } from "@/lib/api";
-import { assertCompanyAccess, findById, remove, update } from "@/lib/db";
+import { assertCompanyAccess, findById, remove, update, withDues } from "@/lib/db";
 import { customerSchema } from "@/lib/validations";
 
 async function loadCustomer(user, id) {
@@ -11,7 +11,10 @@ async function loadCustomer(user, id) {
 
 export async function GET(_req, { params }) {
   return withUser(async (user) => {
-    try { return ok(await loadCustomer(user, params.id)); }
+    try {
+      const c = await loadCustomer(user, params.id);
+      return ok((await withDues(c.companyId, [c]))[0]);
+    }
     catch (e) { return fail(e.message, e.status || 500); }
   });
 }
@@ -19,9 +22,9 @@ export async function GET(_req, { params }) {
 export async function PUT(req, { params }) {
   return withUser(async (user) => {
     try {
-      const existing = await loadCustomer(user, params.id);
+      await loadCustomer(user, params.id);
       const body = await readBody(req);
-      delete body.id; delete body.companyId; delete body.createdAt;
+      delete body.id; delete body.companyId; delete body.createdAt; delete body.outstanding;
       
       const parse = customerSchema.partial().safeParse(body);
       if (!parse.success) {

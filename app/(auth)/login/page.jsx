@@ -59,7 +59,7 @@ export default function LoginPage() {
         </form>
 
         <div className="mt-4 flex items-center justify-between text-sm">
-          <Link href="/forgot-password" className="text-primary hover:underline">Forgot password?</Link>
+          <Link href="/reset-password" className="text-primary hover:underline">Forgot password?</Link>
           <Link href="/signup" className="text-primary hover:underline">Create account</Link>
         </div>
       </CardContent>

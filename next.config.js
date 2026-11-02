@@ -10,6 +10,8 @@ const nextConfig = {
   images: { remotePatterns: [] },
 
   experimental: {
+    // Loads instrumentation.js: the outbound network guard.
+    instrumentationHook: true,
     serverActions: { bodySizeLimit: "10mb" },
 
     // Keep the SQLite driver out of the webpack bundle: it loads its .wasm

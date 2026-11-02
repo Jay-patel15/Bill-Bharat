@@ -1,7 +1,6 @@
 import * as XLSX from "xlsx";
 import { fail, withUser } from "@/lib/api";
-import { assertCompanyAccess, getCompanyIdFromRequest } from "@/lib/db";
-import { findWhere } from "@/lib/db";
+import { assertCompanyAccess, getCompanyIdFromRequest, findWhere, withDues } from "@/lib/db";
 
 const TYPES = {
   sales: { table: "sales", filename: "sales-report.xlsx" },
@@ -20,11 +19,11 @@ export async function GET(req) {
 
       const companyId = getCompanyIdFromRequest(req);
       await assertCompanyAccess(user, companyId);
-      const rows = await findWhere(cfg.table, (r) => r.companyId === companyId);
+      let rows = await findWhere(cfg.table, { companyId });
+      if (type === "customers") rows = await withDues(companyId, rows);
 
       const flatRows = rows.map((r) => {
         const o = { ...r };
-        delete o.__row;
         if (typeof o.items === "object") o.items = JSON.stringify(o.items);
         return o;
       });

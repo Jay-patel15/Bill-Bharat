@@ -39,7 +39,7 @@ export default function SalesReportPage() {
       <ReportsNav />
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-semibold">Sales report</h1>
-        <a href={`/api/reports/export?type=sales`} target="_blank" rel="noreferrer">
+        <a href={`/api/reports/export?type=sales&companyId=${active.id}`} target="_blank" rel="noreferrer">
           <Button variant="outline"><FileDown className="h-4 w-4" /> Export Excel</Button>
         </a>
       </div>

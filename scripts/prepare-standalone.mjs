@@ -30,6 +30,20 @@ for (const [from, to] of copies) {
   console.log(`copied ${path.relative(root, from)} -> ${path.relative(root, to)}`);
 }
 
+// Secrets and local books must never reach an installer. Next copies .env*
+// into standalone, and tracing can pull in ./.data. Remove, then verify.
+for (const name of fs.readdirSync(standalone)) {
+  if (name.startsWith(".env") || name === ".data") {
+    fs.rmSync(path.join(standalone, name), { recursive: true, force: true });
+    console.log(`removed ${name} from the bundle`);
+  }
+}
+const leaked = fs.readdirSync(standalone).filter((n) => n.startsWith(".env") || n === ".data");
+if (leaked.length) {
+  console.error(`Refusing to package: ${leaked.join(", ")} still in ${standalone}`);
+  process.exit(1);
+}
+
 // File tracing can miss the driver's .wasm because it is loaded at runtime
 // rather than required. Verify rather than discover it at first query.
 const wasm = path.join(standalone, "node_modules", "node-sqlite3-wasm", "dist", "node-sqlite3-wasm.wasm");

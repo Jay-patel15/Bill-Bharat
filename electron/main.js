@@ -14,7 +14,7 @@
  * Override the target with BB_DEV_URL.
  */
 
-const { app, BrowserWindow, Menu, shell, dialog } = require("electron");
+const { app, BrowserWindow, Menu, shell, dialog, session, safeStorage } = require("electron");
 const { fork } = require("node:child_process");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
@@ -38,20 +38,30 @@ function booksDir() {
 
 /**
  * The session cookie is signed with a secret generated on this machine at
- * first launch, not baked into the build — a shipped secret would be the
- * same for every install.
+ * first launch, not baked into the build. It is stored encrypted with
+ * Electron safeStorage (Windows DPAPI: readable only by this Windows user).
+ * The Gemini API key is in turn encrypted with a key derived from this
+ * secret, so both are protected by the user's Windows login.
  */
 function sessionSecret() {
-  const file = path.join(app.getPath("userData"), "session-secret");
-  try {
-    const existing = fs.readFileSync(file, "utf8").trim();
-    if (existing) return existing;
-  } catch {
-    // First launch — fall through and create it.
+  const dir = app.getPath("userData");
+  const sealed = path.join(dir, "session-secret.enc");
+  const legacy = path.join(dir, "session-secret");
+  const canSeal = safeStorage.isEncryptionAvailable();
+
+  if (fs.existsSync(sealed)) return safeStorage.decryptString(fs.readFileSync(sealed));
+
+  let secret = "";
+  try { secret = fs.readFileSync(legacy, "utf8").trim(); } catch { /* first launch */ }
+  if (!secret) secret = crypto.randomBytes(32).toString("hex");
+
+  fs.mkdirSync(dir, { recursive: true });
+  if (canSeal) {
+    fs.writeFileSync(sealed, safeStorage.encryptString(secret));
+    fs.rmSync(legacy, { force: true }); // migrate the old plain-text file
+  } else {
+    fs.writeFileSync(legacy, secret, { mode: 0o600 }); // no OS keystore available
   }
-  const secret = crypto.randomBytes(32).toString("hex");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, secret, { mode: 0o600 });
   return secret;
 }
 
@@ -101,7 +111,13 @@ async function startServer() {
       HOSTNAME: "127.0.0.1",
       PORT: String(port),
       JWT_SECRET: sessionSecret(),
+      // Lets the server snapshot the books before a new version touches them.
+      BILLBHARAT_APP_VERSION: app.getVersion(),
+      NEXT_TELEMETRY_DISABLED: "1",
       BILLBHARAT_DATA_DIR: booksDir(),
+      // Snapshots live beside the books, not inside them, so restoring a copied
+      // data folder never wipes the safety copies.
+      BILLBHARAT_BACKUP_DIR: path.join(app.getPath("userData"), "backups"),
       // Runs the child under Electron's bundled Node rather than as a second
       // Electron GUI process.
       ELECTRON_RUN_AS_NODE: "1"
@@ -131,29 +147,39 @@ async function startServer() {
  * self-extracts ~88 MB first, so without this the user stares at nothing and
  * concludes the app failed to start.
  */
-const SPLASH = `data:text/html,${encodeURIComponent(`
+const SPLASH = `data:text/html;charset=utf-8,${encodeURIComponent(`
+<meta charset="utf-8">
 <style>
   html,body{height:100%;margin:0}
   body{display:grid;place-content:center;justify-items:center;gap:18px;
        font:15px/1.4 "Segoe UI",system-ui,sans-serif;color:#0f172a;background:#fff}
-  .mark{width:52px;height:52px;border-radius:10px;background:#0f172a;color:#fff;
-        display:grid;place-content:center;font-weight:700;font-size:26px}
+  .mark{width:72px;height:72px}
   .bar{width:180px;height:3px;border-radius:3px;background:#e2e8f0;overflow:hidden}
   .bar i{display:block;width:40%;height:100%;background:#0f172a;animation:s 1.1s ease-in-out infinite}
   @keyframes s{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}
   small{color:#64748b}
-  @media (prefers-color-scheme:dark){
-    body{background:#0f172a;color:#f1f5f9}
-    .mark{background:#f1f5f9;color:#0f172a}
-    .bar{background:#1e293b}.bar i{background:#f1f5f9}
-    small{color:#94a3b8}
-  }
 </style>
-<div class="mark">B</div>
+<img class="mark" alt="" src="data:image/svg+xml;base64,${fs.readFileSync(path.join(__dirname, "icon.svg")).toString("base64")}">
 <div>Starting BillBharat…</div>
 <div class="bar"><i></i></div>
 <small>Loading your local books</small>
 `)}`;
+
+/**
+ * The window may only load the local server and in-memory content. Links to
+ * other sites (WhatsApp share, AI Studio) open in the user's browser via the
+ * handlers below; nothing remote loads inside the app.
+ */
+function lockDownNetwork() {
+  session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
+    const url = details.url;
+    // chrome:// and chrome-untrusted:// are Chromium's own built-in pages (the PDF viewer loads its UI from them); never the network.
+    if (/^(data|blob|devtools|chrome-extension|chrome|chrome-untrusted):/.test(url)) return callback({});
+    // Same host as the app server, any scheme: covers http and the dev hot-reload websocket.
+    const local = Boolean(appUrl) && new URL(url).host === new URL(appUrl).host;
+    callback({ cancel: !local });
+  });
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -164,6 +190,7 @@ function createWindow() {
     show: false,
     backgroundColor: "#ffffff",
     title: "BillBharat",
+    icon: path.join(__dirname, "icon.png"),
     webPreferences: {
       // The page is ordinary web content served over loopback; it needs no
       // access to Node from the renderer.
@@ -210,6 +237,14 @@ function buildMenu() {
           label: "Open Data Folder",
           click: () => shell.openPath(booksDir())
         },
+        {
+          label: "Open Backups Folder",
+          click: () => {
+            const dir = path.join(app.getPath("userData"), "backups");
+            fs.mkdirSync(dir, { recursive: true });
+            shell.openPath(dir);
+          }
+        },
         { type: "separator" },
         { role: "quit" }
       ]
@@ -241,6 +276,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(async () => {
     buildMenu();
+    lockDownNetwork();
     createWindow();
     try {
       if (!isDev) await startServer();

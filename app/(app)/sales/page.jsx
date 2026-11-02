@@ -6,7 +6,8 @@ import { Plus, FileDown, ChevronDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
-import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
+import { Table, TD, TH, THead, TR } from "@/components/ui/table";
+import { VirtualTBody } from "@/components/ui/virtual-tbody";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { api, useCompany } from "@/components/company-context";
 import { formatINR, formatDate, DOCUMENT_TYPES } from "@/lib/utils";
@@ -84,8 +85,8 @@ export default function SalesPage() {
                 <TH className="text-right">Subtotal</TH>
                 <TH className="text-right">Tax</TH><TH className="text-right">Total</TH>
                 <TH>Status</TH><TH /></TR></THead>
-              <TBody>
-                {filtered.map((s) => {
+              <VirtualTBody items={filtered} colSpan={8}>
+                {(s) => {
                   const tax = Number(s.cgst || 0) + Number(s.sgst || 0) + Number(s.igst || 0);
                   return (
                     <TR key={s.id} className="cursor-pointer hover:bg-muted/50 transition-colors">
@@ -112,8 +113,8 @@ export default function SalesPage() {
                       </TD>
                     </TR>
                   );
-                })}
-              </TBody>
+                }}
+              </VirtualTBody>
             </Table>
           )}
         </CardContent>

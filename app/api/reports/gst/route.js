@@ -1,6 +1,5 @@
 import { fail, ok, withUser } from "@/lib/api";
-import { assertCompanyAccess, getCompanyIdFromRequest } from "@/lib/db";
-import { findWhere } from "@/lib/db";
+import { assertCompanyAccess, getCompanyIdFromRequest, findWhere } from "@/lib/db";
 
 export async function GET(req) {
   return withUser(async (user) => {
@@ -11,15 +10,13 @@ export async function GET(req) {
       const from = url.searchParams.get("from");
       const to = url.searchParams.get("to");
 
-      const inRange = (d) => {
-        if (!d) return false;
-        if (from && d < from) return false;
-        if (to && d > to) return false;
-        return true;
-      };
+      const inRange = (d) => (!from && !to) || (d && (!from || d >= from) && (!to || d <= to));
 
-      const sales = await findWhere("sales", (s) => s.companyId === companyId && (!from && !to ? true : inRange(s.invoiceDate)));
-      const purchases = await findWhere("purchases", (p) => p.companyId === companyId && (!from && !to ? true : inRange(p.billDate)));
+      // Only Tax Invoices carry GST liability; quotations, proformas, POs and challans do not.
+      const sales = (await findWhere("sales", { companyId }))
+        .filter((s) => (s.documentType || "Tax Invoice") === "Tax Invoice" && inRange(s.invoiceDate));
+      const purchases = (await findWhere("purchases", { companyId }))
+        .filter((p) => p.status !== "Draft" && inRange(p.billDate));
 
       const out = {
         sales: {

@@ -6,8 +6,9 @@ const REPORTS = [
   { href: "/reports/sales", title: "Sales report", desc: "Invoice-level sales with tax breakdown." },
   { href: "/reports/gst", title: "GST report", desc: "GSTR-friendly summary of CGST, SGST, IGST." },
   { href: "/reports/finance", title: "Finance overview", desc: "Receivables, payables, profit." },
-  { href: "/reports/outstanding", title: "Outstanding dues", desc: "Outstanding dues grouped by customer." },
-  { href: "/reports/daybook", title: "Day Book (Rojmel)", desc: "Daily ledger register for sales, Jama, Udhar & site expenses." },
+  { href: "/reports/outstanding", title: "Outstanding dues", desc: "What customers owe you and what you owe suppliers." },
+  { href: "/reports/ledger", title: "Party ledger", desc: "One customer or supplier: bill amount, paid, balance, running ledger." },
+  { href: "/reports/daybook", title: "Rojmel (Cash Book)", desc: "Money in (Debit) and out (Credit) with running balance." },
   { href: "/reports/audit", title: "Audit log", desc: "System change logs and deletion records." }
 ];
 

@@ -1,5 +1,5 @@
 import { fail, ok, readBody, withUser } from "@/lib/api";
-import { assertCompanyAccess, getCompanyIdFromRequest, findWhere, insert } from "@/lib/db";
+import { assertCompanyAccess, getCompanyIdFromRequest, findWhere, insert, withDues } from "@/lib/db";
 import { customerSchema } from "@/lib/validations";
 
 export async function GET(req) {
@@ -7,8 +7,7 @@ export async function GET(req) {
     try {
       const companyId = getCompanyIdFromRequest(req);
       await assertCompanyAccess(user, companyId);
-      const customers = await findWhere("customers", { companyId });
-      return ok(customers);
+      return ok(await withDues(companyId, await findWhere("customers", { companyId })));
     } catch (e) {
       return fail(e.message, e.status || 500);
     }

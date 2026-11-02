@@ -66,7 +66,7 @@ export default function FinanceReportPage() {
       <ReportsNav />
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-semibold">Finance overview</h1>
-        <a href={`/api/reports/export?type=customers`} target="_blank" rel="noreferrer">
+        <a href={`/api/reports/export?type=customers&companyId=${active.id}`} target="_blank" rel="noreferrer">
           <Button variant="outline"><FileDown className="h-4 w-4" /> Export outstanding</Button>
         </a>
       </div>

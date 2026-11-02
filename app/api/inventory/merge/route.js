@@ -1,6 +1,5 @@
 import { fail, ok, readBody, withUser } from "@/lib/api";
-import { assertCompanyAccess } from "@/lib/db";
-import { findById, remove, update } from "@/lib/db";
+import { assertCompanyAccess, findById, remove, update, transaction } from "@/lib/db";
 
 /**
  * POST /api/inventory/merge
@@ -27,10 +26,11 @@ export async function POST(req) {
 
       // Merge: add duplicate's quantity into master
       const combinedQty = Number(master.quantity || 0) + Number(duplicate.quantity || 0);
-      const updated = await update("inventory", masterId, { quantity: combinedQty });
-
-      // Delete the duplicate
-      await remove("inventory", duplicateId);
+      const updated = await transaction(async () => {
+        const row = await update("inventory", masterId, { quantity: combinedQty }, user.id);
+        await remove("inventory", duplicateId, user.id);
+        return row;
+      });
 
       return ok({ merged: updated, removedId: duplicateId });
     } catch (e) {

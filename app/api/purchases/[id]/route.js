@@ -1,5 +1,6 @@
 import { fail, ok, readBody, withUser } from "@/lib/api";
-import { assertCompanyAccess, findById, remove, update } from "@/lib/db";
+import { assertCompanyAccess, findById, findWhere, remove, update, query, transaction } from "@/lib/db";
+import { addPayment, recordPurchaseAccounting, removeDocumentEntries, findStockFor } from "@/lib/accounting";
 
 async function loadPurchase(user, id) {
   const p = await findById("purchases", id);
@@ -8,14 +9,14 @@ async function loadPurchase(user, id) {
   return p;
 }
 
+async function withPayments(p) {
+  const payments = await findWhere("payments", { refId: p.id, type: "PURCHASE" });
+  return { ...p, payments: payments.sort((a, b) => new Date(b.date) - new Date(a.date)) };
+}
+
 export async function GET(_req, { params }) {
   return withUser(async (user) => {
-    try {
-      const { findWhere } = await import("@/lib/db");
-      const p = await loadPurchase(user, params.id);
-      const payments = await findWhere("payments", (pay) => pay.refId === p.id && pay.type === "PURCHASE");
-      return ok({ ...p, payments: (payments || []).sort((a, b) => new Date(b.date) - new Date(a.date)) });
-    }
+    try { return ok(await withPayments(await loadPurchase(user, params.id))); }
     catch (e) { return fail(e.message, e.status || 500); }
   });
 }
@@ -25,35 +26,33 @@ export async function PUT(req, { params }) {
     try {
       const p = await loadPurchase(user, params.id);
       const body = await readBody(req);
-      const allowed = ["status", "amountPaid", "notes", "pdfUrl", "customerId"];
       const patch = {};
-      for (const k of allowed) if (body[k] !== undefined) patch[k] = body[k];
-      if (patch.amountPaid !== undefined) patch.amountPaid = Number(patch.amountPaid);
+      for (const k of ["status", "notes", "pdfUrl", "customerId"]) if (body[k] !== undefined) patch[k] = body[k];
       if (patch.customerId !== undefined) {
         patch.customerId = (patch.customerId && patch.customerId !== "null") ? patch.customerId : null;
       }
 
-      // Record payment if amount changed
-      if (patch.amountPaid !== undefined) {
-        const diff = patch.amountPaid - Number(p.amountPaid || 0);
-        if (diff !== 0) {
-          const { insert } = await import("@/lib/db");
-          await insert("payments", {
-            companyId: p.companyId,
-            type: "PURCHASE",
-            refId: p.id,
-            amount: diff,
-            method: body.paymentMethod || "Cash",
-            date: new Date().toISOString(),
-            notes: body.paymentNotes || `Payment for bill ${p.billNumber}`
-          });
+      const updated = await transaction(async () => {
+        let row = Object.keys(patch).length ? await update("purchases", p.id, patch, user.id) : p;
+        // Approving a draft posts the bill to the books.
+        if (p.status === "Draft" && row.status !== "Draft") {
+          const posted = await query(`SELECT 1 AS x FROM ledger_entries WHERE "refId" = $1 LIMIT 1`, [p.id]);
+          if (!posted.length) await recordPurchaseAccounting(row);
         }
-      }
-
-      const updated = await update("purchases", params.id, patch);
-      const { findWhere } = await import("@/lib/db");
-      const payments = await findWhere("payments", (pay) => pay.refId === p.id && pay.type === "PURCHASE");
-      return ok({ ...updated, payments: (payments || []).sort((a, b) => new Date(b.date) - new Date(a.date)) });
+        if (body.amountPaid !== undefined) {
+          const diff = Number(body.amountPaid) - Number(p.amountPaid || 0);
+          if (!Number.isFinite(diff)) { const e = new Error("Invalid amountPaid"); e.status = 400; throw e; }
+          if (diff !== 0) {
+            row = (await addPayment("PURCHASE", row, {
+              amount: diff,
+              method: body.paymentMethod,
+              notes: body.paymentNotes || `Payment for bill ${p.billNumber}`
+            })).doc;
+          }
+        }
+        return row;
+      });
+      return ok(await withPayments(updated));
     } catch (e) { return fail(e.message, e.status || 500); }
   });
 }
@@ -61,8 +60,16 @@ export async function PUT(req, { params }) {
 export async function DELETE(_req, { params }) {
   return withUser(async (user) => {
     try {
-      await loadPurchase(user, params.id);
-      await remove("purchases", params.id);
+      const p = await loadPurchase(user, params.id);
+      await transaction(async () => {
+        // Take back the stock this bill added (matched the same way POST matched it).
+        for (const it of p.items || []) {
+          const inv = await findStockFor(p.companyId, it);
+          if (inv) await update("inventory", inv.id, { quantity: Number(inv.quantity || 0) - Number(it.quantity || 0) }, user.id);
+        }
+        await removeDocumentEntries("PURCHASE", p.id);
+        await remove("purchases", p.id, user.id);
+      });
       return ok({ deleted: true });
     } catch (e) { return fail(e.message, e.status || 500); }
   });

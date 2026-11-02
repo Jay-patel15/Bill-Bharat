@@ -5,8 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { computeInvoice, gstStateFromGstin, GST_SLABS, GST_UNITS } from "@/lib/gst";
-import { formatINR } from "@/lib/utils";
+import { formatINR, localDate } from "@/lib/utils";
 import { useCompany, api } from "./company-context";
+import { ItemSearch } from "./item-search";
+import { MASTER_CREATED } from "./quick-create";
 
 const blankItem = () => ({
   name: "", sku: "", hsnCode: "", quantity: 1, unit: "PCS",
@@ -18,7 +20,7 @@ export function PurchaseForm({ initial = {}, onSubmit, submitLabel = "Save purch
   const [supplierName, setSupplierName] = useState(initial.supplierName || "");
   const [supplierGst, setSupplierGst] = useState(initial.supplierGst || "");
   const [billNumber, setBillNumber] = useState(initial.billNumber || "");
-  const [billDate, setBillDate] = useState(initial.billDate || new Date().toISOString().slice(0, 10));
+  const [billDate, setBillDate] = useState(initial.billDate || localDate());
   const [items, setItems] = useState(initial.items?.length ? initial.items : [blankItem()]);
   const [amountPaid, setAmountPaid] = useState(initial.amountPaid || 0);
   const [notes, setNotes] = useState(initial.notes || "");
@@ -26,13 +28,21 @@ export function PurchaseForm({ initial = {}, onSubmit, submitLabel = "Save purch
   const [saving, setSaving] = useState(false);
 
   const [customers, setCustomers] = useState([]);
+  const [inventory, setInventory] = useState([]);
   const [customerId, setCustomerId] = useState(initial.customerId || "");
 
   useEffect(() => {
     if (active?.id) {
       api("/api/customers").then(setCustomers).catch(() => setCustomers([]));
+      api("/api/inventory").then(setInventory).catch(() => setInventory([]));
     }
   }, [active?.id]);
+
+  useEffect(() => {
+    const added = (e) => { if (e.detail.kind === "item") setInventory((l) => [...l, e.detail.record]); };
+    window.addEventListener(MASTER_CREATED, added);
+    return () => window.removeEventListener(MASTER_CREATED, added);
+  }, []);
 
   useEffect(() => {
     if (initial.items?.length) setItems(initial.items);
@@ -85,22 +95,30 @@ export function PurchaseForm({ initial = {}, onSubmit, submitLabel = "Save purch
       <Card>
         <CardHeader className="flex-row items-center justify-between">
           <CardTitle>Items</CardTitle>
-          <Button size="sm" variant="outline" onClick={() => setItems((a) => [...a, blankItem()])}>
+          <Button data-add-row size="sm" variant="outline" onClick={() => setItems((a) => [...a, blankItem()])}>
             <Plus className="h-3.5 w-3.5" /> Add row
           </Button>
         </CardHeader>
-        <CardContent className="space-y-2">
+        <CardContent className="space-y-2" data-grid>
           <datalist id="gst-unit-list-purchase">
             {GST_UNITS.map((u) => (
               <option key={u} value={u} />
             ))}
           </datalist>
-          <div className="grid grid-cols-[2fr_0.8fr_0.6fr_0.5fr_0.6fr_0.9fr_0.6fr_0.6fr_1fr_2.4rem] gap-2 text-xs text-muted-foreground px-2">
+          <div className="grid [&>*]:min-w-0 grid-cols-[2fr_0.8fr_0.6fr_0.5fr_0.6fr_0.9fr_0.6fr_0.6fr_1fr_2.4rem] gap-2 text-xs text-muted-foreground px-2">
             <div>Item</div><div>HSN</div><div>SKU</div><div>Qty</div><div>Unit</div><div>Buy</div><div>GST%</div><div>Disc</div><div className="text-right">Total</div><div />
           </div>
           {items.map((it, i) => (
-            <div key={i} className="grid grid-cols-[2fr_0.8fr_0.6fr_0.5fr_0.6fr_0.9fr_0.6fr_0.6fr_1fr_2.4rem] gap-2 items-start">
-              <Input placeholder="Item name" value={it.name} onChange={(e) => setItem(i, { name: e.target.value })} />
+            <div key={i} data-grid-row className="grid [&>*]:min-w-0 grid-cols-[2fr_0.8fr_0.6fr_0.5fr_0.6fr_0.9fr_0.6fr_0.6fr_1fr_2.4rem] gap-2 items-start">
+              <ItemSearch
+                value={it.name}
+                items={inventory}
+                onText={(name) => setItem(i, { name })}
+                onPick={(inv) => setItem(i, {
+                  name: inv.name, sku: inv.sku || "", hsnCode: inv.hsnCode || "", unit: inv.unit || "PCS",
+                  gstRate: Number(inv.gstRate) || 0, purchasePrice: Number(inv.purchasePrice) || 0
+                })}
+              />
               <Input value={it.hsnCode} onChange={(e) => setItem(i, { hsnCode: e.target.value })} />
               <Input value={it.sku} onChange={(e) => setItem(i, { sku: e.target.value })} />
               <Input type="number" min={0} step="0.01" value={it.quantity} onChange={(e) => setItem(i, { quantity: Number(e.target.value) })} />
@@ -148,7 +166,7 @@ export function PurchaseForm({ initial = {}, onSubmit, submitLabel = "Save purch
             <Field label="Amount paid (₹)">
               <Input type="number" min={0} value={amountPaid} onChange={(e) => setAmountPaid(Number(e.target.value))} />
             </Field>
-            <Button className="w-full" onClick={save} disabled={saving || !supplierName}>
+            <Button data-accept className="w-full" onClick={save} disabled={saving || !supplierName}>
               {saving ? "Saving…" : submitLabel}
             </Button>
           </CardContent>

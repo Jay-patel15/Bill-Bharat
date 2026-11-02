@@ -1,70 +1,50 @@
+import { z } from "zod";
 import { fail, ok, readBody, withUser } from "@/lib/api";
-import { assertCompanyAccess, findById, findWhere, remove, update } from "@/lib/db";
-import { paymentSchema } from "@/lib/validations";
+import { assertCompanyAccess, findById, remove, update, query, transaction } from "@/lib/db";
+import { recalcPaid, repostPayment } from "@/lib/accounting";
 
-// Recalculate sale's amountPaid from all remaining payment entries and update status
-async function recalcSale(saleId) {
-  const payments = await findWhere("payments", { refId: saleId });
-  const newTotal = (payments || []).reduce((sum, p) => sum + Number(p.amount || 0), 0);
+// Only these can change; type, refId and companyId stay as recorded.
+const editSchema = z.object({
+  amount: z.number().refine((n) => n !== 0, "Amount cannot be zero").optional(),
+  method: z.string().optional().nullable(),
+  date: z.string().optional().nullable(),
+  notes: z.string().optional().nullable()
+});
 
-  const sale = await findById("sales", saleId);
-  if (!sale) return;
-
-  let newStatus = "Unpaid";
-  if (newTotal >= Number(sale.total || 0)) newStatus = "Paid";
-  else if (newTotal > 0) newStatus = "Partially Paid";
-
-  await update("sales", saleId, { amountPaid: newTotal, status: newStatus });
+async function loadPayment(user, id) {
+  const payment = await findById("payments", id);
+  if (!payment) { const e = new Error("Payment not found"); e.status = 404; throw e; }
+  await assertCompanyAccess(user, payment.companyId);
+  return payment;
 }
 
-// PUT /api/payments/:id — edit a payment entry
 export async function PUT(req, { params }) {
   return withUser(async (user) => {
     try {
-      const payment = await findById("payments", params.id);
-      if (!payment) return fail("Payment not found", 404);
-      await assertCompanyAccess(user, payment.companyId);
+      const payment = await loadPayment(user, params.id);
+      const parse = editSchema.safeParse(await readBody(req));
+      if (!parse.success) return fail(parse.error.errors[0]?.message || "Invalid payload", 400);
 
-      const body = await readBody(req);
-      const parse = paymentSchema.partial().safeParse(body);
-      if (!parse.success) {
-        return fail(parse.error.errors[0]?.message || "Invalid payload", 400);
-      }
-
-      const updated = await update("payments", params.id, parse.data, user.id);
-      if (payment.refId) await recalcSale(payment.refId);
+      const updated = await transaction(async () => {
+        const row = await update("payments", payment.id, parse.data, user.id);
+        await repostPayment(row);
+        if (row.refId) await recalcPaid(row.type, row.refId);
+        return row;
+      });
       return ok(updated);
     } catch (e) { return fail(e.message, e.status || 500); }
   });
 }
 
-// DELETE /api/payments/:id — delete a payment entry
 export async function DELETE(_req, { params }) {
   return withUser(async (user) => {
     try {
-      const payment = await findById("payments", params.id);
-      if (!payment) return fail("Payment not found", 404);
-      await assertCompanyAccess(user, payment.companyId);
-
-      const saleId = payment.refId;
-      if (saleId && payment.type === "SALE") {
-        const sale = await findById("sales", saleId);
-        if (sale && sale.customerId) {
-          const customer = await findById("customers", sale.customerId);
-          if (customer) {
-            await update("customers", customer.id, {
-              outstanding: Number(customer.outstanding || 0) + Number(payment.amount || 0)
-            });
-          }
-        }
-      }
-
-      // Remove matching ledger entries for this payment
-      const { query } = await import("@/lib/db/sqlite");
-      await query("DELETE FROM ledger_entries WHERE refId = $1", [params.id]);
-
-      await remove("payments", params.id, user.id);
-      if (saleId) await recalcSale(saleId);
+      const payment = await loadPayment(user, params.id);
+      await transaction(async () => {
+        await query(`DELETE FROM ledger_entries WHERE "refId" = $1`, [payment.id]);
+        await remove("payments", payment.id, user.id);
+        if (payment.refId) await recalcPaid(payment.type, payment.refId);
+      });
       return ok({ deleted: true });
     } catch (e) { return fail(e.message, e.status || 500); }
   });

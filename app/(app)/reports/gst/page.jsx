@@ -6,14 +6,14 @@ import { Field, Input } from "@/components/ui/input";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { ReportsNav } from "@/components/reports-nav";
-import { formatINR } from "@/lib/utils";
+import { formatINR, localDate } from "@/lib/utils";
 import { NoCompanySelected } from "@/components/empty-state";
 import { useCompany, api } from "@/components/company-context";
 
 export default function GstReportPage() {
   const { active } = useCompany();
-  const [from, setFrom] = useState(new Date().toISOString().slice(0, 7) + "-01");
-  const [to, setTo] = useState(new Date().toISOString().slice(0, 10));
+  const [from, setFrom] = useState(localDate().slice(0, 7) + "-01");
+  const [to, setTo] = useState(localDate());
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -40,7 +40,7 @@ export default function GstReportPage() {
           variant="outline" 
           className="gap-2"
           onClick={async () => {
-            const data = await api("/api/reports/gst/export");
+            const data = await api(`/api/reports/gst/export?from=${from}`);
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");

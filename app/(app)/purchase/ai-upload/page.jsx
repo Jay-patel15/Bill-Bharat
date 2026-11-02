@@ -11,7 +11,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { api, useCompany } from "@/components/company-context";
 import { useToast } from "@/components/ui/toast";
 import { computeInvoice, gstStateFromGstin, GST_SLABS } from "@/lib/gst";
-import { formatINR } from "@/lib/utils";
+import { formatINR, localDate } from "@/lib/utils";
 import { NoCompanySelected } from "@/components/empty-state";
 
 const blankItem = () => ({
@@ -86,7 +86,7 @@ export default function AiUploadPage() {
         supplierName: json.data.supplierName || "",
         supplierGst: json.data.supplierGst || "",
         billNumber: json.data.billNumber || "",
-        billDate: json.data.billDate || new Date().toISOString().slice(0, 10),
+        billDate: json.data.billDate || localDate(),
         items: (json.data.items || []).map((it) => {
           const extractedName = it.name || "";
           // Check if we already have a mapping for this name
@@ -235,12 +235,12 @@ export default function AiUploadPage() {
               Uploaded vendor invoice. AI extracted line items and tax details on the right.
             </p>
           </div>
-          <div className="p-4 bg-slate-100 dark:bg-slate-900 flex items-center gap-2 text-xs">
+          <div className="p-4 bg-slate-100 flex items-center gap-2 text-xs">
             <FileCheck className="h-4 w-4 text-emerald-600" />
             <span className="truncate flex-1">{file?.name}</span>
             <span className="text-muted-foreground">{Math.round((file?.size || 0) / 1024)} KB</span>
           </div>
-          <div className="bg-slate-200 dark:bg-slate-800" style={{ height: 720 }}>
+          <div className="bg-slate-200" style={{ height: 720 }}>
             {previewUrl ? (
               <iframe src={previewUrl} className="w-full h-full" title="PDF preview" />
             ) : (
@@ -264,7 +264,7 @@ export default function AiUploadPage() {
             </Button>
           </div>
 
-          <div className="p-4 space-y-4 max-h-[720px] overflow-auto">
+          <div className="p-4 space-y-4 max-h-[75vh] overflow-auto">
             {isDuplicate && (
               <div className="bg-red-50 text-red-700 p-3 rounded-md border border-red-200 text-sm flex items-start gap-2 shadow-sm">
                 <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
@@ -367,7 +367,7 @@ export default function AiUploadPage() {
 
 function ItemCard({ item, computed, inventory, onChange, onRemove }) {
   return (
-    <div className="rounded-md border-2 border-slate-300 dark:border-slate-600 p-3 space-y-2 bg-background shadow-sm">
+    <div className="rounded-md border-2 border-slate-300 p-3 space-y-2 bg-background shadow-sm">
       <div className="flex flex-col gap-2 mb-2 border-b pb-3">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1">

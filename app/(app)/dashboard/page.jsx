@@ -5,13 +5,12 @@ import {
   ResponsiveContainer, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip,
   LineChart, Line
 } from "recharts";
-import { ArrowUpRight, IndianRupee, Receipt, Wallet, AlertTriangle, FolderKanban } from "lucide-react";
+import { ArrowUpRight, IndianRupee, Receipt, Wallet, AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { api, useCompany } from "@/components/company-context";
 import { formatINR } from "@/lib/utils";
 import { StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ProgressBar } from "@/components/progress-bar";
 
 export default function DashboardPage() {
   const { active, companies } = useCompany();
@@ -51,7 +50,7 @@ export default function DashboardPage() {
     );
   }
 
-  const { totals, monthly, lowStock, recentSales, projects = [] } = data;
+  const { totals, monthly, lowStock, recentSales } = data;
 
   return (
     <div className="space-y-6">
@@ -61,15 +60,6 @@ export default function DashboardPage() {
         <StatCard title="Receivable" value={formatINR(totals.receivable)} icon={Wallet} accent="text-amber-600" />
         <StatCard title="Payable" value={formatINR(totals.payable)} icon={ArrowUpRight} accent="text-rose-600" />
       </div>
-
-      {totals.projects > 0 ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <StatCard title="Active projects" value={`${totals.activeProjects} / ${totals.projects}`} icon={FolderKanban} accent="text-indigo-600" />
-          <StatCard title="Contract value" value={formatINR(totals.contractValue)} icon={IndianRupee} accent="text-slate-600" />
-          <StatCard title="Billed against contracts" value={formatINR(totals.billedAgainstContracts)} icon={Receipt} accent="text-sky-600" />
-          <StatCard title="Collected against contracts" value={formatINR(totals.collectedAgainstContracts)} icon={Wallet} accent="text-emerald-600" />
-        </div>
-      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
@@ -109,41 +99,6 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
-
-      {projects.length > 0 ? (
-        <Card>
-          <CardHeader className="flex-row items-center justify-between">
-            <CardTitle className="flex items-center gap-2"><FolderKanban className="h-4 w-4 text-indigo-600" /> Project progress</CardTitle>
-            <Link href="/projects" className="text-sm text-primary hover:underline">All projects →</Link>
-          </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-2">
-            {projects.map((p) => (
-              <Link key={p.id} href={`/projects/${p.id}`} className="block rounded-md border p-3 hover:bg-accent transition-colors">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="font-semibold truncate">{p.name}</div>
-                    <div className="text-xs text-muted-foreground">{p.code || "—"}</div>
-                  </div>
-                  <div className="text-right text-sm">
-                    <div className="font-semibold">{formatINR(p.contractValue)}</div>
-                    <div className="text-[11px] text-muted-foreground">contract</div>
-                  </div>
-                </div>
-                <div className="mt-3 mb-1 flex justify-between text-[11px] text-muted-foreground">
-                  <span>Billed {p.billedPercent}%</span>
-                  <span>Collected {p.collectedPercent}%</span>
-                </div>
-                <ProgressBar billed={p.billedPercent} collected={p.collectedPercent} />
-                <div className="mt-2 grid grid-cols-3 text-xs text-muted-foreground">
-                  <span>Billed: <span className="text-foreground font-medium">{formatINR(p.billed)}</span></span>
-                  <span>Pending: <span className="text-amber-600 font-medium">{formatINR(p.pending)}</span></span>
-                  <span className="text-right">Remaining: <span className="text-foreground font-medium">{formatINR(p.remaining)}</span></span>
-                </div>
-              </Link>
-            ))}
-          </CardContent>
-        </Card>
-      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>

@@ -5,14 +5,12 @@ const COOKIE = process.env.SESSION_COOKIE_NAME || "bb_session";
 const PUBLIC_PATHS = [
   "/login",
   "/signup",
-  "/forgot-password",
   "/reset-password"
 ];
 
 const PUBLIC_API_PREFIXES = [
   "/api/auth/login",
   "/api/auth/signup",
-  "/api/auth/forgot",
   "/api/auth/reset",
   "/api/health"
 ];

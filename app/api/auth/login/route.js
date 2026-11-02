@@ -16,7 +16,7 @@ export async function POST(req) {
     if (!parsed.success) return fail("Invalid email or password", 400);
 
     const { email, password } = parsed.data;
-    const user = await findOne("users", (u) => u.email?.toLowerCase() === email.toLowerCase());
+    const user = await findOne("users", { email: email.toLowerCase() });
     if (!user || !user.passwordHash) return fail("Invalid email or password", 401);
 
     const valid = await bcrypt.compare(password, user.passwordHash);

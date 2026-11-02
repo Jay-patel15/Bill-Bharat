@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { STATES } from "@/lib/utils";
+import { uploadLogo } from "./logo-upload";
 
 export function CompanyForm({ initial = {}, submitLabel = "Save", onSubmit }) {
   const [form, setForm] = useState({
@@ -23,12 +24,8 @@ export function CompanyForm({ initial = {}, submitLabel = "Save", onSubmit }) {
 
   async function handleLogo(file) {
     if (!file) return;
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("subfolder", "logos");
-    const res = await fetch("/api/upload", { method: "POST", body: fd });
-    const json = await res.json();
-    if (json.ok) set("logoUrl", json.data.viewUrl);
+    try { set("logoUrl", await uploadLogo(file)); }
+    catch (e) { alert(e.message); }
   }
 
   return (

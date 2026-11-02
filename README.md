@@ -1,155 +1,114 @@
 # BillBharat
 
-GST-compliant invoicing, inventory, purchase and finance app for Indian businesses — packaged as an **offline Windows desktop application**. Everything lives on the machine it runs on: a single SQLite file and a folder of PDFs, in the spirit of Tally. No server, no account, no cloud.
+**Offline GST billing, inventory and accounts for Indian businesses: a Windows desktop app, in the spirit of Tally.**
 
-## Features
+BillBharat makes GST tax invoices, tracks stock, purchases, payments and expenses, and keeps your cash book (Rojmel) and party ledgers, all on your own PC. There is no server and no cloud account: your books are one file in your Windows profile, backed up automatically before every update. It works fully without internet; the only online feature is the optional AI bill reader.
 
-- Multi-company (GSTIN, PAN, bank, T&C, logo) with a top-bar company switcher
-- Customers/parties with credit limits and live outstanding balances
-- Inventory with HSN, GST slab, stock and low-stock alerts
-- GST-compliant invoices: auto-numbering, CGST/SGST or IGST by state, line- and invoice-level discounts, amount in words, branded PDF
-- Purchases: supplier bills with auto-inventory increase, payment tracking
-- Projects with Bill-of-Quantity tracking (billed vs collected vs contract value)
-- Reports: sales, GST input/output, finance overview, daybook, audit log, customer outstanding (Excel export)
-- Local email/password login (JWT cookie), so the books aren't open to anyone who opens the app
-- *Optional* AI purchase/sales PDF reader — the only feature that uses the internet, and it is off unless you add an API key
+Full guide (using the app, settings, data, how it works, troubleshooting): **[DOCUMENTATION.md](DOCUMENTATION.md)**
 
-## Tech
+---
 
-`Next.js 14 · React 18 · Tailwind · SQLite (node-sqlite3-wasm) · Electron · jsPDF · JWT (jose) · bcrypt · Recharts`
+## What you get
 
-## Where your data lives
-
-| | Path |
+| | |
 |---|---|
-| Packaged app | `%APPDATA%\BillBharat\data\` |
-| `npm run dev` | `./.data/` (gitignored) |
+| **GST invoices** | Tax Invoice, Proforma, Quotation, Purchase Order, Delivery Challan. CGST+SGST or IGST chosen by state, line and bill discounts, rounded total, amount in words. |
+| **Industrial invoice print** | The standard bordered A4 GST bill: logo, company name and tagline, GSTIN/PAN/state, Rule 46 notice, Original/Duplicate/Triplicate, challan/order/LR/transporter/e-way/payment details, buyer and consignee, ruled item grid with taxes, bank details, declaration, numbered terms, signatures. Long bills continue onto page 2 by themselves. |
+| **Invoice template editor** | Turn any part of the invoice on or off and rename it, with a live A4 preview. Set your own invoice number format (e.g. `INV/{FY}/{###}`). |
+| **Company settings** | Edit company name, GSTIN, PAN, address, contacts, logo, bank details and terms & conditions from Settings. |
+| **Inventory** | Items with SKU, barcode, HSN, GST rate, unit and stock; sales take stock out, purchases put it in. |
+| **Purchases** | Supplier bills typed in, or read from a PDF/photo by AI (optional). |
+| **Payments** | Full or part payments on invoices and bills; status follows automatically. |
+| **Expenses** | Simple expense manager by head and month. |
+| **Rojmel (cash book)** | Every rupee in (Debit) and out (Credit) by cash, UPI, bank or cheque, with running balance. |
+| **Party ledger & outstanding** | For every customer and supplier: a detailed running ledger of bills and payments, for all invoices or the ones you tick. Printable PDFs. |
+| **Reports** | Sales, GST summary, GSTR-1 JSON, finance overview, audit log, Excel export. |
+| **Keyboard first** | Tally-style keys: `F4` contra, `F5` payment, `F6` receipt, `F8` sale, `F9` purchase (each opens a new entry), `Alt+A` save, `Alt+C` quick create, `F2` date, `Enter` next field, `Esc` back. |
+| **Safe by default** | Password login with recovery code, automatic daily backups and backups before updates, copies to your own backup folders (Google Drive / OneDrive / Dropbox folder, pen drive, other drive, network share), uploaded files included, a reminder when backups haven't left the PC for 7 days, one-click restore, a password-protected *Reset (erase all books)* that backs up first, multiple companies in one install. |
 
-That folder holds `billbharat.db` (all your books) and `files/` (invoice PDFs, logos, uploaded bills). **Back it up by copying the folder** — the app is closed-file-safe once quit. In the app: **File → Open Data Folder**.
+## Install and use
 
-Set `BILLBHARAT_DATA_DIR` to put it somewhere else, e.g. a synced or backed-up drive.
+1. Run `BillBharat-<version>-x64.exe`: the installer asks where to install (default is your user's Programs folder; pick any folder you like) and adds desktop and Start-menu shortcuts, or run `BillBharat-<version>-portable.exe` without installing.
+2. **Sign up** and write down the recovery code it shows.
+3. **Create your company**, then open **Settings → Company details** to check the name, GSTIN, address, logo and bank details, and **Settings → Terms & Conditions** to set your invoice terms.
+4. Add customers and items, then press `F8` to make your first invoice.
 
-## Run it locally (instant, hot reload)
+Your books live in `%APPDATA%\BillBharat\data\` and backups in `%APPDATA%\BillBharat\backups\` (both reachable from the **File** menu). Reinstalling or updating never touches them. **Both are on C:**, so add an extra backup folder off C: or in a cloud-synced folder (Settings → Backup & Restore) to survive a Windows or drive reset.
 
-```bash
-npm install
-cp .env.example .env.local     # then set JWT_SECRET
-npm run dev                    # http://localhost:3000
-```
-
-Generate a secret:
-
-```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-```
-
-To see it in the real desktop window while developing, leave `npm run dev` running and in a second terminal:
-
-```bash
-npm run dev:app                # Electron attached to localhost:3000, hot reload intact
-```
-
-First run: **Sign up** → you're sent to **Companies → Create** to set up the business (GSTIN, bank, terms) → add a customer and a few inventory items → create your first invoice.
+---
 
 ## Build the Windows .exe
 
+### What you need
+
+- **Windows 10 or 11**, 64-bit.
+- **Node.js 20 or newer** (LTS recommended) from nodejs.org. `npm` comes with it.
+- **Internet for the first build only**: `npm install` downloads packages, and the first `npm run dist` downloads Electron and the installer tools. The app you build runs offline.
+- About 2 GB free disk space.
+
+No `.env` file is needed to build: the packaged app creates its own secret on first launch.
+
+### Steps
+
+Open **PowerShell** or **Command Prompt** in the project folder (the one with `package.json`):
+
 ```bash
+# 1. Install dependencies (first time, or after package.json changes)
+npm install
+
+# 2. Optional: run the self-check (database, accounting, GST math)
+npm run check
+
+# 3. Build the installer and the portable exe
 npm run dist
 ```
 
-Produces in `dist/`:
+`npm run dist` does three things in order:
 
-- `BillBharat-1.0.0-x64.exe` — installer (per-user, adds desktop + start-menu shortcuts)
-- `BillBharat-1.0.0-portable.exe` — single file, runs with no installation
+1. `next build` compiles the app.
+2. `scripts/prepare-standalone.mjs` copies static files into the bundle, **deletes any `.env*` file and `.data` folder from it**, refuses to continue if any remain (so your keys and test books never ship), and checks the SQLite engine is included.
+3. `electron-builder` packages it.
 
-Other targets:
+### Output (in `dist\`)
+
+| File | Use |
+|---|---|
+| `BillBharat-<version>-x64.exe` | Installer: lets you choose the install folder, per-user, desktop and Start-menu shortcuts. Use this for daily work. |
+| `BillBharat-<version>-portable.exe` | Single file, no install. Slower to start (it unpacks itself first). |
+| `win-unpacked\` | The unpacked app, handy for testing (`BillBharat.exe` inside). |
+
+For a quicker test build without installers: `npm run dist:dir` (produces only `dist\win-unpacked\`).
+
+### Releasing an update
+
+1. Raise `"version"` in `package.json` (for example `1.0.0` → `1.0.1`).
+2. Run `npm run dist` and hand out the new installer.
+3. Users install over the old version. On first start the app **backs up their books automatically** (`backup_v1.0.0_…db` in the backups folder) before applying any database changes.
+
+### Optional
+
+- **App icon / logo:** the logo is `electron/icon.svg` (a bill with the ₹ sign and a saffron-green stripe). After editing it run `npm run icon` to redraw `electron/icon.png` (used for the exe, installer, window and taskbar; the SVG itself is the start-up splash), and copy the SVG to `app/icon.svg` (sidebar and browser tab).
+- **Code signing:** the build is unsigned, so Windows SmartScreen shows "Windows protected your PC" on first run ("More info" → "Run anyway"). To avoid it, sign with a code-signing certificate (electron-builder `win.certificateFile` / `CSC_LINK`).
+
+### If the build fails
+
+| Problem | Fix |
+|---|---|
+| `Cannot find module './vendor-chunks/…'`, `./1682.js`, or the build hangs | Windows file locks. Close any running BillBharat or `node.exe`, and any terminal opened inside `.next`. Delete the `.next` folder and run `npm run dist` again. |
+| `Refusing to package: .env …` | The safety check stopped secrets from shipping. Run `npm run dist` again; if it repeats, delete `.next` first. |
+| `SQLite wasm binary missing` | Run `npm install` again, then rebuild. |
+| `npm` is not recognised | Install Node.js and reopen the terminal. |
+
+---
+
+## For developers
 
 ```bash
-npm run build      # Next.js production build + bundle prep only
-npm run dist:dir   # unpacked app in dist/win-unpacked (fastest way to test packaging)
+npm install
+cp .env.example .env.local     # set JWT_SECRET
+npm run dev                    # http://localhost:3000 in the browser
+npm run dev:app                # second terminal: the desktop window on the dev server
 ```
 
-The installer deliberately installs per-user into `%LOCALAPPDATA%\Programs\BillBharat` rather than `Program Files`: the bundled Next.js server needs a writable directory for its own runtime cache, which a machine-wide install would deny to a non-admin user. Your data is in `%APPDATA%` either way, so reinstalling never touches the books.
-
-## Check the data layer
-
-```bash
-npm run check
-```
-
-Runs 17 assertions against a throwaway database — JSON columns, numeric types, filters, foreign keys, the audit log, and persistence across a reopen. Run it after touching anything in `lib/db/`.
-
-## Architecture
-
-```
-electron/main.js      - desktop shell: generates the session secret, boots the
-                        Next server on a free loopback port, opens the window
-scripts/
-  prepare-standalone.mjs - folds static assets into the standalone bundle
-  check-db.mjs           - data-layer self-check
-
-/app
-  /(auth)             - login, signup, forgot/reset (public)
-  /(app)              - protected app shell (sidebar + topbar)
-    /dashboard /companies /customers /inventory /journals
-    /sales            - list, /create-invoice, /[id], /ai-upload
-    /purchase         - list, /create, /ai-upload
-    /projects         - list, /create, /[id]
-    /reports          - sales, gst, finance, daybook, outstanding, audit
-  /api
-    /auth/*           - login/signup/logout/me/forgot/reset
-    /companies /customers /inventory /sales /purchases /projects /payments
-    /journals /product-mappings
-    /sales/[id]/pdf   - render the invoice PDF; ?save=1 archives a copy
-    /files/[...path]  - serves stored files from the data folder (auth required)
-    /upload           - file -> data folder
-    /ai/*             - optional PDF extractors
-    /reports/*        - dashboard, gst, daybook, export (xlsx)
-/components           - sidebar, topbar, company-context, ui/* primitives, forms
-/lib
-  /db
-    sqlite.js         - SQLite connection, pragmas, prepared-statement cache
-    schema.js         - the schema, inlined; applied on every open
-  db.js               - data access layer + company access checks
-  paths.js            - resolves the data directory
-  storage/local.js    - local disk file storage
-  auth.js             - JWT session helpers (jose)
-  api.js              - response helpers
-  gst.js              - GST engine + amount-to-words
-  pdf.js              - branded jsPDF invoice generator
-  ai.js               - optional PDF->JSON parser
-  utils.js            - cn(), formatINR, state list, invoice numbering
-middleware.js         - routing gate: redirects when no session cookie is present
-```
-
-### How auth is enforced
-
-`middleware.js` only checks whether a session cookie *exists*, because Next.js middleware runs in the Edge runtime where build-time env inlining would bake in the wrong `JWT_SECRET` — the packaged app generates its secret on first launch. Signatures are verified per request in `getCurrentUser()` (`lib/auth.js`), which every API route reaches through `withUser()`/`requireUser()` and every app page through the `(app)` layout. A forged or expired cookie gets past the redirect and is then rejected server-side.
-
-### Notes on the data layer
-
-- `lib/db.js` is a generic row store. Add an entity by extending `SCHEMAS` and adding the table to `lib/db/schema.js`; CRUD, JSON handling and the audit log come for free.
-- Every statement in the schema is `IF NOT EXISTS` and is applied on each open, so adding a table or index is the whole migration.
-- The driver is SQLite compiled to WebAssembly rather than a native addon, so one `node_modules` works under both plain Node and Electron — no per-ABI rebuild and no MSVC toolchain to install.
-- Multi-tenant safety: every API route checks `companyId` ownership via `assertCompanyAccess`.
-- The forgot-password flow generates a one-hour reset link. With no mail service wired up, the link is returned in the response.
-
-## GST rules implemented
-
-- 2-digit state code is read from the GSTIN prefix (or set explicitly per customer/company).
-- Same state → CGST (rate/2) + SGST (rate/2) on the taxable value.
-- Different state → IGST (full rate).
-- Slabs: 0%, 5%, 12%, 18%, 28% (configurable per line).
-- Discounts apply per line and on the whole invoice; both reduce the taxable value before tax.
-- Round-off and amount-in-words are auto-included on the PDF.
-
-## UI and Ops Fixes Log
-
-- **Payment Recording API Fix (`/api/sales/[id]/payments`)**: Created missing `POST` and `GET` route handlers for `/api/sales/[id]/payments`. Recording partial or full payments on sales invoices previously threw `404 Not Found`. It now records payment receipts, updates customer outstanding balances, and auto-updates invoice status to `Partially Paid` or `Paid`.
-- **Unit Input Deletion & Backspace Fix**: Fixed input binding from `value={it.unit || "PCS"}` to `value={it.unit ?? ""}` across Invoice Creation (`app/(app)/sales/create-invoice/page.jsx`), Purchase Bills (`components/purchase-form.jsx`), and Inventory (`app/(app)/inventory/page.jsx`). Previously, backspacing or clearing "P" evaluated `"" || "PCS"` back to `"PCS"`, preventing users from deleting or editing the unit.
-- **Master GST Unit Auto-Suggestions**: Added `<datalist>` containing standard Indian GST accounting units (`PCS`, `NOS`, `KG`, `L`, `MTR`, `BOX`, `SET`, `SQFT`, `SQM`, `GMS`, `TON`, `BAG`, `BTL`, `PAC`, `DOZ`, `RFT`, `JOB`, `HRS`, `CAN`, `KLR`) while allowing custom text entry.
-- **Database & Foreign Key Auto-Seeding (`lib/auth.js`)**: Fixed `SQLite3Error: FOREIGN KEY constraint failed` on company creation under `DEV_BYPASS_AUTH=1` by automatically resolving/seeding the `dev-user-id` in the SQLite `users` table.
-- **Local SQLite Engine (`lib/db/sqlite.js`)**: Completely removed PostgreSQL / `pg` dependencies in favor of 100% offline `node-sqlite3-wasm` local storage in `./.data/billbharat.db`.
-- **UI Table & PDF Unit Rendering**: Added `Unit` column visibility to the Items table in Create Invoice, Purchase Bills, Sale Detail view (`/sales/[id]`), and PDF invoice output (`lib/pdf.js`).
-
-Built with care for Indian SMBs.
+Tech: Next.js 14 · React 18 · Tailwind · SQLite (node-sqlite3-wasm) · Electron · jsPDF · Zod.
+Architecture, accounting model, database rules and how to change the code safely are in **[DOCUMENTATION.md](DOCUMENTATION.md)**.

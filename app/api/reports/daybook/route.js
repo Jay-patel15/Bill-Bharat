@@ -1,129 +1,75 @@
-import { fail, ok, readBody, withUser } from "@/lib/api";
-import { assertCompanyAccess, getCompanyIdFromRequest, findWhere, findById } from "@/lib/db";
-import { recordLedgerEntry, recordPaymentAccounting } from "@/lib/accounting";
-import { expenseEntrySchema } from "@/lib/validations";
+import { fail, ok, withUser } from "@/lib/api";
+import { assertCompanyAccess, getCompanyIdFromRequest, query } from "@/lib/db";
+import { CASH_LEDGERS } from "@/lib/accounting";
+import { localDate } from "@/lib/utils";
 
+const r2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+
+/**
+ * GET /api/reports/daybook?from=YYYY-MM-DD&to=YYYY-MM-DD — Rojmel (cash book).
+ *
+ * Only the cash/bank side of each voucher is listed, once: money in is Debit (jama field),
+ * money out is Credit (udhar field). Opening balance is everything before `from`; each row
+ * carries the running balance.
+ */
 export async function GET(req) {
   return withUser(async (user) => {
     try {
       const companyId = getCompanyIdFromRequest(req);
       await assertCompanyAccess(user, companyId);
+      const url = new URL(req.url);
+      const to = url.searchParams.get("to") || localDate();
+      const from = url.searchParams.get("from") || `${to.slice(0, 7)}-01`;
+      if (![from, to].every((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))) return fail("Dates must be YYYY-MM-DD", 400);
 
-      // Auto-sync unsynced payments into Day Book
-      const payments = await findWhere("payments", { companyId });
-      const existingEntries = await findWhere("ledger_entries", { companyId });
-      const sales = await findWhere("sales", { companyId });
+      const cash = CASH_LEDGERS.map((_, i) => `$${i + 4}`).join(", ");
+      const params = [companyId, from, to, ...CASH_LEDGERS];
 
-      for (const payment of (payments || [])) {
-        const hasAccounting = existingEntries.some(e => e.refId === payment.id);
-        if (!hasAccounting) {
-          let partyName = "Customer";
-          let refDocNumber = "";
-          if (payment.type === "SALE" && payment.refId) {
-            const sale = (sales || []).find(s => s.id === payment.refId);
-            if (sale) {
-              refDocNumber = sale.invoiceNumber;
-              if (sale.customerId) {
-                const cust = await findById("customers", sale.customerId);
-                if (cust) partyName = cust.name;
-              }
-            }
-          }
-          await recordPaymentAccounting(payment, partyName, refDocNumber);
-        }
-      }
+      const [{ opening }] = await query(
+        `SELECT COALESCE(SUM(debit - credit), 0) AS opening FROM ledger_entries
+         WHERE "companyId" = $1 AND date < $2 AND "ledgerName" IN (${cash})`,
+        params
+      );
 
-      const entries = await findWhere("ledger_entries", { companyId });
-      entries.sort((a, b) => {
-        const dateDiff = String(b.date || "").localeCompare(String(a.date || ""));
-        if (dateDiff !== 0) return dateDiff;
-        return String(b.createdAt || "").localeCompare(String(a.createdAt || ""));
+      const lines = await query(
+        `SELECT e.id, e."refId", e.date, e.type, e."ledgerName" AS mode, e.description, e.debit, e.credit,
+                (SELECT group_concat(c."ledgerName", ', ') FROM ledger_entries c
+                  WHERE c."refId" = e."refId" AND c.id <> e.id AND c."ledgerName" NOT IN (${cash})) AS particulars,
+                (e.type IN ('RECEIPT', 'EXPENSE', 'CONTRA') AND e."refId" IS NOT NULL
+                  AND (SELECT COUNT(*) FROM ledger_entries c WHERE c."refId" = e."refId") = 2
+                  AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.id = e."refId")) AS deletable
+         FROM ledger_entries e
+         WHERE e."companyId" = $1 AND e.date BETWEEN $2 AND $3 AND e."ledgerName" IN (${cash})
+         ORDER BY e.date, e."createdAt"`,
+        params
+      );
+
+      let balance = r2(opening);
+      const rows = lines.map((l) => {
+        balance = r2(balance + l.debit - l.credit);
+        return {
+          id: l.id,
+          refId: l.refId,
+          date: l.date,
+          type: l.type,
+          mode: l.mode,
+          particulars: l.particulars || l.description || "",
+          description: l.description || "",
+          jama: l.debit,
+          udhar: l.credit,
+          balance,
+          deletable: Boolean(l.deletable)
+        };
       });
 
-      return ok(entries);
-    } catch (e) { return fail(e.message, e.status || 500); }
-  });
-}
-
-export async function POST(req) {
-  return withUser(async (user) => {
-    try {
-      const body = await readBody(req);
-      const companyId = body.companyId || getCompanyIdFromRequest(req);
-      await assertCompanyAccess(user, companyId);
-
-      const parse = expenseEntrySchema.safeParse({ ...body, companyId });
-      if (!parse.success) {
-        return fail(parse.error.errors[0]?.message || "Invalid payload", 400);
-      }
-      const data = parse.data;
-      const isIncome = data.entryType === "IN";
-
-      // Resolve site/project name if projectId is provided
-      let siteTag = "";
-      if (data.projectId && data.projectId !== "none") {
-        const proj = await findById("projects", data.projectId);
-        if (proj && proj.companyId === companyId) {
-          siteTag = ` [Site: ${proj.name}]`;
-        }
-      } else if (data.projectName) {
-        siteTag = ` [Site: ${data.projectName}]`;
-      }
-
-      const description = `${data.description || data.category}${siteTag}`;
-      const categoryLedgerName = `${data.category}${siteTag}`;
-      const cashBankLedgerName = data.paymentMode || "Cash";
-      const voucherType = isIncome ? "RECEIPT" : "EXPENSE";
-
-      if (isIncome) {
-        // IN (Jama / Income / Money Received):
-        // Debit: Cash/Bank, Credit: Category/Income Ledger
-        await recordLedgerEntry(companyId, {
-          date: data.date,
-          type: voucherType,
-          refId: data.projectId || null,
-          ledgerName: cashBankLedgerName,
-          debit: data.amount,
-          credit: 0,
-          description
-        });
-
-        const creditEntry = await recordLedgerEntry(companyId, {
-          date: data.date,
-          type: voucherType,
-          refId: data.projectId || null,
-          ledgerName: categoryLedgerName,
-          debit: 0,
-          credit: data.amount,
-          description
-        });
-
-        return ok(creditEntry);
-      } else {
-        // OUT (Udhar / Expense / Money Paid):
-        // Debit: Category/Expense Ledger, Credit: Cash/Bank
-        const debitEntry = await recordLedgerEntry(companyId, {
-          date: data.date,
-          type: voucherType,
-          refId: data.projectId || null,
-          ledgerName: categoryLedgerName,
-          debit: data.amount,
-          credit: 0,
-          description
-        });
-
-        await recordLedgerEntry(companyId, {
-          date: data.date,
-          type: voucherType,
-          refId: data.projectId || null,
-          ledgerName: cashBankLedgerName,
-          debit: 0,
-          credit: data.amount,
-          description
-        });
-
-        return ok(debitEntry);
-      }
+      return ok({
+        from, to,
+        opening: r2(opening),
+        totalJama: r2(rows.reduce((s, r) => s + r.jama, 0)),
+        totalUdhar: r2(rows.reduce((s, r) => s + r.udhar, 0)),
+        closing: balance,
+        rows
+      });
     } catch (e) { return fail(e.message, e.status || 500); }
   });
 }

@@ -1,5 +1,7 @@
 import { fail, ok, readBody, withUser } from "@/lib/api";
-import { assertCompanyAccess, findById, remove, update } from "@/lib/db";
+import { assertCompanyAccess, findById, findWhere, remove, update, transaction } from "@/lib/db";
+import { addPayment, removeDocumentEntries } from "@/lib/accounting";
+import { getDocumentType } from "@/lib/utils";
 
 async function loadSale(user, id) {
   const s = await findById("sales", id);
@@ -11,10 +13,9 @@ async function loadSale(user, id) {
 export async function GET(_req, { params }) {
   return withUser(async (user) => {
     try {
-      const { findWhere } = await import("@/lib/db");
       const sale = await loadSale(user, params.id);
-      const payments = await findWhere("payments", { refId: sale.id });
-      return ok({ ...sale, payments: (payments || []).sort((a, b) => new Date(b.date) - new Date(a.date)) });
+      const payments = await findWhere("payments", { refId: sale.id, type: "SALE" });
+      return ok({ ...sale, payments: payments.sort((a, b) => new Date(b.date) - new Date(a.date)) });
     }
     catch (e) { return fail(e.message, e.status || 500); }
   });
@@ -25,43 +26,26 @@ export async function PUT(req, { params }) {
     try {
       const sale = await loadSale(user, params.id);
       const body = await readBody(req);
-      const allowed = ["status", "amountPaid", "notes", "dueDate", "pdfUrl"];
       const patch = {};
-      for (const k of allowed) if (body[k] !== undefined) patch[k] = body[k];
-      if (patch.amountPaid !== undefined) patch.amountPaid = Number(patch.amountPaid);
+      for (const k of ["status", "notes", "dueDate", "pdfUrl"]) if (body[k] !== undefined) patch[k] = body[k];
       if (patch.dueDate !== undefined) patch.dueDate = patch.dueDate || null;
 
-      // Recompute status if amountPaid changed without explicit status
-      if (patch.amountPaid !== undefined && body.status === undefined) {
-        if (patch.amountPaid >= Number(sale.total || 0)) patch.status = "Paid";
-        else if (patch.amountPaid > 0) patch.status = "Partially Paid";
-        else patch.status = "Unpaid";
-      }
-
-      // Update customer outstanding by the diff
-      if (patch.amountPaid !== undefined && sale.customerId) {
-        const customer = await findById("customers", sale.customerId);
-        if (customer) {
-          const diff = patch.amountPaid - Number(sale.amountPaid || 0);
+      const updated = await transaction(async () => {
+        let row = Object.keys(patch).length ? await update("sales", sale.id, patch, user.id) : sale;
+        // A new amountPaid is booked as a correcting payment so ledger and invoice stay in step.
+        if (body.amountPaid !== undefined) {
+          const diff = Number(body.amountPaid) - Number(sale.amountPaid || 0);
+          if (!Number.isFinite(diff)) { const e = new Error("Invalid amountPaid"); e.status = 400; throw e; }
           if (diff !== 0) {
-            const { insert } = await import("@/lib/db");
-            await insert("payments", {
-              companyId: sale.companyId,
-              type: "SALE",
-              refId: sale.id,
+            row = (await addPayment("SALE", row, {
               amount: diff,
-              method: body.paymentMethod || "Cash",
-              date: new Date().toISOString(),
-              notes: body.notes || `Payment for ${sale.invoiceNumber}`
-            });
-
-            const newOut = Math.max(0, Number(customer.outstanding || 0) - diff);
-            await update("customers", customer.id, { outstanding: newOut });
+              method: body.paymentMethod,
+              notes: diff < 0 ? `Correction for ${sale.invoiceNumber}` : `Payment for ${sale.invoiceNumber}`
+            })).doc;
           }
         }
-      }
-
-      const updated = await update("sales", params.id, patch);
+        return row;
+      });
       return ok(updated);
     } catch (e) { return fail(e.message, e.status || 500); }
   });
@@ -70,8 +54,20 @@ export async function PUT(req, { params }) {
 export async function DELETE(_req, { params }) {
   return withUser(async (user) => {
     try {
-      await loadSale(user, params.id);
-      await remove("sales", params.id);
+      const sale = await loadSale(user, params.id);
+      await transaction(async () => {
+        if (getDocumentType(sale.documentType).affectsStock) {
+          for (const it of sale.items || []) {
+            if (!it.inventoryId) continue;
+            const inv = await findById("inventory", it.inventoryId);
+            if (inv && inv.companyId === sale.companyId) {
+              await update("inventory", inv.id, { quantity: Number(inv.quantity || 0) + Number(it.quantity || 0) }, user.id);
+            }
+          }
+        }
+        await removeDocumentEntries("SALE", sale.id);
+        await remove("sales", sale.id, user.id);
+      });
       return ok({ deleted: true });
     } catch (e) { return fail(e.message, e.status || 500); }
   });

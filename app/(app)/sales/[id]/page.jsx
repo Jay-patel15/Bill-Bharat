@@ -205,17 +205,17 @@ export default function SaleDetailPage({ params }) {
 
           {/* 3 Summary Cards for Visual Balance Tracking */}
           <div className="grid grid-cols-3 gap-3">
-            <div className="p-3.5 rounded-lg border bg-slate-50 dark:bg-slate-900 text-center">
+            <div className="p-3.5 rounded-lg border bg-slate-50 text-center">
               <div className="text-[11px] font-semibold text-muted-foreground uppercase">Invoice Total</div>
               <div className="text-lg font-bold mt-1">{formatINR(sale.total)}</div>
             </div>
-            <div className="p-3.5 rounded-lg border border-emerald-200 bg-emerald-50/50 dark:bg-emerald-950/20 text-center">
-              <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 uppercase">Amount Received</div>
-              <div className="text-lg font-bold text-emerald-800 dark:text-emerald-300 mt-1">{formatINR(totalPaid)}</div>
+            <div className="p-3.5 rounded-lg border border-emerald-200 bg-emerald-50/50 text-center">
+              <div className="text-[11px] font-semibold text-emerald-700 uppercase">Amount Received</div>
+              <div className="text-lg font-bold text-emerald-800 mt-1">{formatINR(totalPaid)}</div>
             </div>
-            <div className="p-3.5 rounded-lg border border-rose-200 bg-rose-50/50 dark:bg-rose-950/20 text-center">
-              <div className="text-[11px] font-semibold text-rose-700 dark:text-rose-400 uppercase">Pending Balance</div>
-              <div className="text-lg font-bold text-rose-800 dark:text-rose-300 mt-1">{formatINR(pendingBalance)}</div>
+            <div className="p-3.5 rounded-lg border border-rose-200 bg-rose-50/50 text-center">
+              <div className="text-[11px] font-semibold text-rose-700 uppercase">Pending Balance</div>
+              <div className="text-lg font-bold text-rose-800 mt-1">{formatINR(pendingBalance)}</div>
             </div>
           </div>
 

@@ -1,9 +1,9 @@
 import { fail, ok, readBody, withUser } from "@/lib/api";
-import { assertCompanyAccess, getCompanyIdFromRequest } from "@/lib/db";
-import { findById, findWhere, insert, update } from "@/lib/db";
+import { assertCompanyAccess, getCompanyIdFromRequest, findById, findOne, findWhere, insert, update, transaction, getSetting } from "@/lib/db";
+import { mergeTemplate, templateKey } from "@/lib/invoice-template";
 import { computeInvoice, gstStateFromGstin } from "@/lib/gst";
-import { getDocumentType, nextInvoiceNumber, formatInvoiceNotes, parseInvoiceNotes } from "@/lib/utils";
-import { recordSaleAccounting } from "@/lib/accounting";
+import { getDocumentType, nextInvoiceNumber, formatInvoiceNotes, parseInvoiceNotes, localDate } from "@/lib/utils";
+import { recordSaleAccounting, addPayment } from "@/lib/accounting";
 import { saleSchema } from "@/lib/validations";
 
 export async function GET(req) {
@@ -23,7 +23,9 @@ export async function POST(req) {
     try {
       const body = await readBody(req);
       const companyId = body.companyId || getCompanyIdFromRequest(req);
-      const company = await assertCompanyAccess(user, companyId);
+      await assertCompanyAccess(user, companyId);
+      const company = await findById("companies", companyId);
+      if (!company) return fail("Company not found", 404);
 
       const parse = saleSchema.safeParse(body);
       if (!parse.success) {
@@ -34,17 +36,6 @@ export async function POST(req) {
       const customer = await findById("customers", data.customerId);
       if (!customer || customer.companyId !== companyId) return fail("Invalid customer", 400);
 
-      let projectId = null;
-      let projectName = data.projectName || "";
-      if (data.projectId && data.projectId !== "null" && data.projectId !== "custom") {
-        const project = await findById("projects", data.projectId);
-        if (!project || project.companyId !== companyId) return fail("Invalid project", 400);
-        if (project.customerId && project.customerId !== data.customerId) {
-          return fail("Project belongs to a different customer", 400);
-        }
-        projectId = project.id;
-        projectName = project.name;
-      }
 
       const docType = getDocumentType(data.documentType || "Tax Invoice");
       const supplierStateCode = company.stateCode || gstStateFromGstin(company.gstNumber);
@@ -55,77 +46,76 @@ export async function POST(req) {
         items: data.items || [],
         supplierStateCode,
         recipientStateCode,
-        invoiceDiscount: data.discount || 0
+        invoiceDiscount: data.discount || 0,
+        roundToRupee: docType.taxable
       });
       if (!docType.taxable) {
         for (const it of computed.items) { it.cgst = it.sgst = it.igst = 0; it.total = it.taxable; }
         computed.cgst = computed.sgst = computed.igst = 0;
-        computed.grandTotal = computed.subtotal - (Number(data.discount) || 0);
+        computed.grandTotal = computed.subtotal;
       }
-
-      // Invoice number — user-supplied or auto-generated using doc-type prefix
-      let invoiceNumber = (data.invoiceNumber || "").trim();
-      const allSales = await findWhere("sales", { companyId });
-      if (!invoiceNumber) {
-        invoiceNumber = nextInvoiceNumber(allSales.map((s) => s.invoiceNumber), docType.prefix);
-      } else {
-        // Reject duplicates within the same company
-        const dup = allSales.find((s) => s.invoiceNumber === invoiceNumber);
-        if (dup) return fail(`Number ${invoiceNumber} already exists for this company`, 409);
-      }
-
-      const status = data.status || (Number(data.amountPaid) >= computed.grandTotal ? "Paid" : (Number(data.amountPaid) > 0 ? "Partially Paid" : "Unpaid"));
 
       const { notes: plainNotes, metadata: existingMeta } = parseInvoiceNotes(data.notes || "");
-      if (projectName) existingMeta.projectName = projectName;
       const finalNotes = formatInvoiceNotes(plainNotes, existingMeta);
+      const paidNow = Number(data.amountPaid) || 0;
 
-      const created = await insert("sales", {
-        companyId,
-        customerId: customer.id,
-        projectId,
-        documentType: docType.value,
-        invoiceNumber,
-        invoiceDate: data.invoiceDate || new Date().toISOString().slice(0, 10),
-        dueDate: data.dueDate || null,
-        items: computed.items,
-        subtotal: computed.subtotal,
-        discount: computed.invoiceDiscount,
-        cgst: computed.cgst,
-        sgst: computed.sgst,
-        igst: computed.igst,
-        total: computed.grandTotal,
-        amountPaid: Number(data.amountPaid) || 0,
-        status,
-        notes: finalNotes,
-        pdfUrl: ""
-      });
+      const saved = await transaction(async () => {
+        // Number chosen inside the transaction so two saves can't pick the same one.
+        let invoiceNumber = (data.invoiceNumber || "").trim();
+        if (!invoiceNumber) {
+          const allSales = await findWhere("sales", { companyId });
+          let saved = null;
+          try { saved = JSON.parse((await getSetting(templateKey(companyId))) || "null"); } catch { /* corrupt: default format */ }
+          invoiceNumber = nextInvoiceNumber(allSales.map((s) => s.invoiceNumber), docType.prefix, mergeTemplate(saved).text.numberFormat, data.invoiceDate || localDate());
+        } else if (await findOne("sales", { companyId, invoiceNumber })) {
+          const e = new Error(`Number ${invoiceNumber} already exists for this company`);
+          e.status = 409;
+          throw e;
+        }
 
-      // Inventory side-effects only for docs that actually move stock
-      if (docType.affectsStock) {
-        for (const it of computed.items) {
-          if (it.inventoryId) {
+        const created = await insert("sales", {
+          companyId,
+          customerId: customer.id,
+          documentType: docType.value,
+          invoiceNumber,
+          invoiceDate: data.invoiceDate || localDate(),
+          dueDate: data.dueDate || null,
+          items: computed.items,
+          subtotal: computed.subtotal,
+          discount: computed.invoiceDiscount,
+          cgst: computed.cgst,
+          sgst: computed.sgst,
+          igst: computed.igst,
+          total: computed.grandTotal,
+          // Bills take their paid amount from payment rows (below); other documents keep the figure as typed.
+          amountPaid: docType.affectsOutstanding ? 0 : paidNow,
+          status: docType.affectsOutstanding ? "Unpaid" : (data.status || "Unpaid"),
+          notes: finalNotes,
+          pdfUrl: ""
+        });
+
+        if (docType.affectsStock) {
+          for (const it of computed.items) {
+            if (!it.inventoryId) continue;
             const inv = await findById("inventory", it.inventoryId);
             if (inv && inv.companyId === companyId) {
-              const newQty = Math.max(0, Number(inv.quantity || 0) - Number(it.quantity || 0));
-              await update("inventory", inv.id, { quantity: newQty }, user.id);
+              // Negative stock is allowed and shown, as in Tally; clamping to 0 loses the shortfall.
+              await update("inventory", inv.id, { quantity: Number(inv.quantity || 0) - Number(it.quantity || 0) }, user.id);
             }
           }
         }
-      }
 
-      // Outstanding only for docs that are real bills
-      if (docType.affectsOutstanding) {
-        const outstanding = Number(customer.outstanding || 0) + (computed.grandTotal - (Number(data.amountPaid) || 0));
-        await update("customers", customer.id, { outstanding }, user.id);
-      }
-
-      // Accounting Ledger (Double-Entry)
-      if (docType.affectsOutstanding) {
+        if (!docType.affectsOutstanding) return created;
         await recordSaleAccounting(created, customer.name);
-      }
+        if (paidNow > 0) {
+          return (await addPayment("SALE", created, {
+            amount: paidNow, date: created.invoiceDate, notes: `Paid at billing, ${invoiceNumber}`
+          })).doc;
+        }
+        return created;
+      });
 
-      return ok(created);
+      return ok(saved);
     } catch (e) { return fail(e.message, e.status || 500); }
   });
 }

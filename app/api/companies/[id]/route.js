@@ -1,11 +1,12 @@
 import { fail, ok, readBody, withUser } from "@/lib/api";
 import { findById, remove, update } from "@/lib/db";
 import { companySchema } from "@/lib/validations";
+import { snapshot } from "@/lib/db/sqlite";
 
 export async function GET(_req, { params }) {
   return withUser(async (user) => {
     const c = await findById("companies", params.id);
-    if (!c || (user.role !== "admin" && c.userId !== user.id)) return fail("Not found", 404);
+    if (!c || (c.userId !== user.id && process.env.DEV_BYPASS_AUTH !== "1")) return fail("Not found", 404);
     return ok(c);
   });
 }
@@ -13,7 +14,7 @@ export async function GET(_req, { params }) {
 export async function PUT(req, { params }) {
   return withUser(async (user) => {
     const c = await findById("companies", params.id);
-    if (!c || (user.role !== "admin" && c.userId !== user.id)) return fail("Not found", 404);
+    if (!c || (c.userId !== user.id && process.env.DEV_BYPASS_AUTH !== "1")) return fail("Not found", 404);
     const body = await readBody(req);
     delete body.id; delete body.userId; delete body.createdAt;
     const parse = companySchema.partial().safeParse(body);
@@ -28,7 +29,9 @@ export async function PUT(req, { params }) {
 export async function DELETE(_req, { params }) {
   return withUser(async (user) => {
     const c = await findById("companies", params.id);
-    if (!c || (user.role !== "admin" && c.userId !== user.id)) return fail("Not found", 404);
+    if (!c || (c.userId !== user.id && process.env.DEV_BYPASS_AUTH !== "1")) return fail("Not found", 404);
+    // Deleting a company cascades to all its books; keep a copy first.
+    snapshot(undefined, "before_company_delete");
     await remove("companies", params.id, user.id);
     return ok({ deleted: true });
   });

@@ -1,7 +1,23 @@
 import { fail, withUser } from "@/lib/api";
-import { assertCompanyAccess, findById, update } from "@/lib/db";
+import fs from "node:fs";
+import { assertCompanyAccess, findById, getSetting, update } from "@/lib/db";
 import { generateInvoicePdf } from "@/lib/pdf";
-import { uploadFile } from "@/lib/storage/local";
+import { resolveStoragePath, uploadFile } from "@/lib/storage/local";
+import { templateKey } from "@/lib/invoice-template";
+
+/** Company logo from the data folder as a data URL jsPDF can embed (PNG/JPEG only). */
+function loadLogo(logoUrl) {
+  const id = String(logoUrl || "").replace(/^\/api\/files\//, "");
+  const ext = id.split(".").pop()?.toLowerCase();
+  const format = ext === "png" ? "PNG" : ext === "jpg" || ext === "jpeg" ? "JPEG" : null;
+  if (!id || !format) return null;
+  try {
+    const data = fs.readFileSync(resolveStoragePath(id)).toString("base64");
+    return { dataUrl: `data:image/${format.toLowerCase()};base64,${data}`, format };
+  } catch {
+    return null; // missing logo file must not block the invoice
+  }
+}
 import { getDocumentType, parseInvoiceNotes } from "@/lib/utils";
 
 export async function GET(req, { params }) {
@@ -14,13 +30,9 @@ export async function GET(req, { params }) {
       const customer = await findById("customers", sale.customerId);
       if (!customer) return fail("Customer missing", 400);
 
-      let project = null;
-      if (sale.projectId) {
-        project = await findById("projects", sale.projectId);
-      }
-
-      const items = typeof sale.items === "string" ? JSON.parse(sale.items || "[]") : (sale.items || []);
-      const interstate = Number(sale.igst || 0) > 0;
+      const items = sale.items || [];
+      let template = null;
+      try { template = JSON.parse((await getSetting(templateKey(sale.companyId))) || "null"); } catch { /* corrupt: defaults */ }
       const docType = getDocumentType(sale.documentType || "Tax Invoice");
 
       const { notes: plainNotes, metadata } = parseInvoiceNotes(sale.notes);
@@ -28,22 +40,20 @@ export async function GET(req, { params }) {
       const pdfBuffer = generateInvoicePdf({
         company,
         customer,
-        project,
         title: docType.pdfTitle,
-        showTax: docType.value !== "Delivery Challan",
+        template,
+        logo: loadLogo(company.logoUrl),
         invoice: {
           invoiceNumber: sale.invoiceNumber,
           invoiceDate: sale.invoiceDate,
           dueDate: sale.dueDate,
-          projectName: project?.name || sale.projectName || metadata?.projectName || "",
-          interstate,
+          projectName: sale.projectName || metadata?.projectName || "", // site name saved on older bills
           items,
           subtotal: Number(sale.subtotal),
           cgst: Number(sale.cgst),
           sgst: Number(sale.sgst),
           igst: Number(sale.igst),
           invoiceDiscount: Number(sale.discount),
-          roundOff: 0,
           grandTotal: Number(sale.total),
           notes: plainNotes,
           metadata
@@ -81,7 +91,7 @@ export async function GET(req, { params }) {
       return new Response(pdfBuffer, {
         headers: {
           "content-type": "application/pdf",
-          "content-disposition": `inline; filename="${sale.invoiceNumber}.pdf"`
+          "content-disposition": `inline; filename="${String(sale.invoiceNumber).replace(/[\\/:*?"<>|]/g, "-")}.pdf"`
         }
       });
     } catch (e) {

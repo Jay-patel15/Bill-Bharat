@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(npx next *)",
+      "Bash(node --check electron/main.js)",
+      "Bash(node --check scripts/prepare-standalone.mjs)",
+      "Bash(node --check scripts/check-db.mjs)",
+      "Bash(node --check middleware.js)",
+      "Bash(node --input-type=module --check)"
+    ]
+  }
+}

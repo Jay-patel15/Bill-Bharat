@@ -1,16 +1,17 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Plus, Trash2, RefreshCw, Layers } from "lucide-react";
+import { Plus, Trash2, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
-import { Dialog } from "@/components/ui/dialog";
 import { api, useCompany } from "@/components/company-context";
 import { useToast } from "@/components/ui/toast";
 import { computeInvoice, gstStateFromGstin, GST_SLABS, GST_UNITS } from "@/lib/gst";
-import { formatINR, nextInvoiceNumber, DOCUMENT_TYPES, getDocumentType, formatInvoiceNotes, STATES } from "@/lib/utils";
+import { formatINR, nextInvoiceNumber, DEFAULT_NUMBER_FORMAT, DOCUMENT_TYPES, getDocumentType, formatInvoiceNotes, STATES, localDate } from "@/lib/utils";
 import { NoCompanySelected } from "@/components/empty-state";
+import { ItemSearch } from "@/components/item-search";
+import { MASTER_CREATED } from "@/components/quick-create";
 
 const blankItem = () => ({
   inventoryId: "", name: "", hsnCode: "", quantity: 1,
@@ -26,21 +27,18 @@ export default function CreateInvoicePage() {
   const [docType, setDocType] = useState(search.get("type") || "Tax Invoice");
   const [customers, setCustomers] = useState([]);
   const [inventory, setInventory] = useState([]);
-  const [projects, setProjects] = useState([]);
   const [allSales, setAllSales] = useState([]);
   const [customerId, setCustomerId] = useState(search.get("customer") || "");
-  const [projectId, setProjectId] = useState(search.get("project") || "");
-  const [boqDialog, setBoqDialog] = useState(false);
-  const [boqPicks, setBoqPicks] = useState({});
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [items, setItems] = useState([blankItem()]);
-  const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().slice(0, 10));
+  const [invoiceDate, setInvoiceDate] = useState(localDate());
   const [dueDate, setDueDate] = useState("");
   const [discount, setDiscount] = useState(0);
   const [amountPaid, setAmountPaid] = useState(0);
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [numberDirty, setNumberDirty] = useState(false);
+  const [numberFormat, setNumberFormat] = useState(DEFAULT_NUMBER_FORMAT);
   const [showTransport, setShowTransport] = useState(false);
   const [transport, setTransport] = useState({
     challanNumber: "",
@@ -65,79 +63,48 @@ export default function CreateInvoicePage() {
     if (!active?.id) return;
     api("/api/customers").then(setCustomers).catch(() => setCustomers([]));
     api("/api/inventory").then(setInventory).catch(() => setInventory([]));
-    api("/api/projects").then(setProjects).catch(() => setProjects([]));
     api("/api/sales").then(setAllSales).catch(() => setAllSales([]));
+    api("/api/settings/invoice-template").then((r) => setNumberFormat(r.template.text.numberFormat)).catch(() => {});
   }, [active?.id]);
 
+  // Alt+C quick create: add the new customer/item to the lists (and select a new customer).
   useEffect(() => {
-    if (search.get("source") === "ai") {
-      try {
-        const raw = localStorage.getItem("sales_invoice_ai_draft");
-        if (raw) {
-          const draft = JSON.parse(raw);
-          if (draft.customerId) setCustomerId(draft.customerId);
-          if (draft.invoiceNumber) {
-            setInvoiceNumber(draft.invoiceNumber);
-            setNumberDirty(true);
-          }
-          if (draft.invoiceDate) setInvoiceDate(draft.invoiceDate);
-          if (draft.dueDate) setDueDate(draft.dueDate);
-          if (draft.discount) setDiscount(draft.discount);
-          if (draft.notes) setNotes(draft.notes);
-          if (Array.isArray(draft.items) && draft.items.length > 0) {
-            setItems(draft.items);
-          }
-          localStorage.removeItem("sales_invoice_ai_draft");
-          toast({ type: "success", title: "Sales Invoice Prefilled", message: "Loaded details extracted by Gemini AI." });
-        }
-      } catch (e) {
-        console.error("Failed to load AI draft:", e);
-      }
-    }
-  }, [search]);
-
-  // When the user picks a customer, narrow projects to theirs.
-  // When they pick a project, lock the customer.
-  const projectsForCustomer = useMemo(() => {
-    if (!projects || projects.length === 0) return [];
-    const matched = projects.filter((p) => !customerId || !p.customerId || p.customerId === customerId);
-    return matched.length > 0 ? matched : projects;
-  }, [projects, customerId]);
-
-  const selectedProject = projects.find((p) => p.id === projectId) || null;
-  useEffect(() => {
-    if (selectedProject && selectedProject.customerId && customerId !== selectedProject.customerId) {
-      setCustomerId(selectedProject.customerId);
-    }
-  }, [selectedProject?.id]);
+    const added = (e) => {
+      const { kind, record } = e.detail;
+      if (kind === "customer") { setCustomers((l) => [...l, record]); setCustomerId(record.id); }
+      else setInventory((l) => [...l, record]);
+    };
+    window.addEventListener(MASTER_CREATED, added);
+    return () => window.removeEventListener(MASTER_CREATED, added);
+  }, []);
 
   // Auto-suggest the next number whenever doc type or sales list changes
   // (but don't overwrite if the user has edited it).
   useEffect(() => {
     if (numberDirty) return;
     const dt = getDocumentType(docType);
-    setInvoiceNumber(nextInvoiceNumber(allSales.map((s) => s.invoiceNumber), dt.prefix));
-  }, [docType, allSales, numberDirty]);
+    setInvoiceNumber(nextInvoiceNumber(allSales.map((s) => s.invoiceNumber), dt.prefix, numberFormat, invoiceDate));
+  }, [docType, allSales, numberDirty, numberFormat, invoiceDate]);
 
   const dt = getDocumentType(docType);
+  // allSales is newest first, so the first match is the last number issued for this document type.
+  const previousNumber = allSales.find((s) => (s.documentType || "Tax Invoice") === docType)?.invoiceNumber || "";
   const customer = customers.find((c) => c.id === customerId);
   const supplierStateCode = active?.stateCode || gstStateFromGstin(active?.gstNumber || "");
   const recipientStateCode = customer?.stateCode || gstStateFromGstin(customer?.gstNumber || "") || supplierStateCode;
 
   const computed = useMemo(() => {
-    const c = computeInvoice({ items, supplierStateCode, recipientStateCode, invoiceDiscount: Number(discount) || 0 });
+    const c = computeInvoice({ items, supplierStateCode, recipientStateCode, invoiceDiscount: Number(discount) || 0, roundToRupee: dt.taxable });
     if (!dt.taxable) {
       for (const it of c.items) { it.cgst = it.sgst = it.igst = 0; it.total = it.taxable; }
       c.cgst = c.sgst = c.igst = 0;
-      c.grandTotal = c.subtotal - (Number(discount) || 0);
+      c.grandTotal = c.subtotal;
     }
     return c;
   }, [items, supplierStateCode, recipientStateCode, discount, dt.taxable]);
 
   function setItem(i, patch) { setItems((arr) => arr.map((it, idx) => idx === i ? { ...it, ...patch } : it)); }
-  function pickInventory(i, invId) {
-    const inv = inventory.find((x) => x.id === invId);
-    if (!inv) return setItem(i, { inventoryId: "" });
+  function pickInventory(i, inv) {
     setItem(i, {
       inventoryId: inv.id,
       name: inv.name,
@@ -149,7 +116,7 @@ export default function CreateInvoicePage() {
   }
   function regenerateNumber() {
     setNumberDirty(false);
-    setInvoiceNumber(nextInvoiceNumber(allSales.map((s) => s.invoiceNumber), dt.prefix));
+    setInvoiceNumber(nextInvoiceNumber(allSales.map((s) => s.invoiceNumber), dt.prefix, numberFormat, invoiceDate));
   }
 
   async function save() {
@@ -162,7 +129,7 @@ export default function CreateInvoicePage() {
         body: JSON.stringify({
           documentType: docType,
           invoiceNumber: invoiceNumber.trim(),
-          customerId, projectId,
+          customerId,
           invoiceDate, dueDate, items,
           discount: Number(discount) || 0,
           amountPaid: Number(amountPaid) || 0,
@@ -181,8 +148,13 @@ export default function CreateInvoicePage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-semibold">New {docType}</h1>
-        <Button onClick={save} disabled={saving}>{saving ? "Saving…" : `Save ${docType}`}</Button>
+        <div>
+          <h1 className="text-2xl font-semibold">New {docType}</h1>
+          <p className="text-sm text-muted-foreground">
+            Previous {docType.toLowerCase()} no.: <span className="font-mono text-foreground">{previousNumber || "none yet"}</span>
+            {" · "}This one: <span className="font-mono text-foreground">{invoiceNumber || "—"}</span>
+          </p>
+        </div>
       </div>
 
       {/* Doc-type pill bar */}
@@ -203,11 +175,11 @@ export default function CreateInvoicePage() {
         ))}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+      <div className="space-y-4">
+        <Card>
           <CardHeader><CardTitle>Document details</CardTitle></CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-2">
-            <Field label={`${docType} number *`}>
+          <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <Field label={`${docType} number *`} hint="Auto-numbered; ↻ restores the next number">
               <div className="flex gap-2">
                 <Input value={invoiceNumber} onChange={(e) => { setInvoiceNumber(e.target.value); setNumberDirty(true); }} />
                 <Button type="button" variant="outline" size="icon" onClick={regenerateNumber} title="Auto-generate">
@@ -225,36 +197,10 @@ export default function CreateInvoicePage() {
             <Field label={dt.value === "Purchase Order" ? "Expected delivery" : "Due date"}>
               <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
             </Field>
-            <Field label="Project (optional)" hint={selectedProject ? `Contract: ${formatINR(selectedProject.contractValue || 0)}` : "Bill against a BOQ-driven project"}>
-              <Select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-                <option value="">— None —</option>
-                {projectsForCustomer.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <div className="flex items-end">
-              {selectedProject && Array.isArray(selectedProject.boqItems) && selectedProject.boqItems.length > 0 ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    const init = {};
-                    selectedProject.boqItems.forEach((_, i) => { init[i] = { picked: true, qty: selectedProject.boqItems[i].quantity }; });
-                    setBoqPicks(init);
-                    setBoqDialog(true);
-                  }}
-                >
-                  <Layers className="h-4 w-4" /> Bill from BOQ
-                </Button>
-              ) : null}
-            </div>
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-2">
+        <Card>
           <CardHeader className="flex justify-between items-center flex-row">
             <CardTitle>Transport & Consignee Details</CardTitle>
             <Button
@@ -336,43 +282,25 @@ export default function CreateInvoicePage() {
           )}
         </Card>
 
-        <Card>
-          <CardHeader><CardTitle>Summary</CardTitle></CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <Row label="Subtotal" value={formatINR(computed.subtotal)} />
-            {dt.taxable && (computed.interstate
-              ? <Row label="IGST" value={formatINR(computed.igst)} />
-              : (<><Row label="CGST" value={formatINR(computed.cgst)} /><Row label="SGST" value={formatINR(computed.sgst)} /></>))}
-            <Row label="Discount" value={"- " + formatINR(computed.invoiceDiscount)} />
-            <div className="border-t pt-2">
-              <Row label={<strong>Grand Total</strong>} value={<strong>{formatINR(computed.grandTotal)}</strong>} />
-            </div>
-            <div className="text-[11px] text-muted-foreground pt-1">
-              {!dt.taxable
-                ? "Non-taxable document — no GST applied."
-                : (computed.interstate ? "Interstate (IGST)" : "Intrastate (CGST + SGST)")}
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       <Card>
         <CardHeader className="flex-row items-center justify-between">
           <CardTitle>Items</CardTitle>
-          <Button size="sm" variant="outline" onClick={() => setItems((a) => [...a, blankItem()])}>
+          <Button data-add-row size="sm" variant="outline" onClick={() => setItems((a) => [...a, blankItem()])}>
             <Plus className="h-3.5 w-3.5" /> Add row
           </Button>
         </CardHeader>
-        <CardContent className="space-y-2">
+        <CardContent className="space-y-2" data-grid>
           <datalist id="gst-unit-list">
             {GST_UNITS.map((u) => (
               <option key={u} value={u} />
             ))}
           </datalist>
-          <div className={`grid gap-2 text-xs text-muted-foreground px-2 ${
+          <div className={`grid gap-2 [&>*]:min-w-0 text-xs text-muted-foreground px-2 ${
             dt.taxable
-              ? "grid-cols-[2fr_0.9fr_0.5fr_0.7fr_0.9fr_0.7fr_0.7fr_1fr_2.4rem]"
-              : "grid-cols-[3fr_1fr_0.6fr_0.8fr_2.4rem]"
+              ? "grid-cols-[3.2fr_0.9fr_0.6fr_0.7fr_0.9fr_0.7fr_0.7fr_1fr_2.4rem]"
+              : "grid-cols-[4fr_1fr_0.6fr_0.8fr_2.4rem]"
           }`}>
             <div>Item</div>
             <div>HSN</div>
@@ -384,18 +312,17 @@ export default function CreateInvoicePage() {
             <div />
           </div>
           {items.map((it, i) => (
-            <div key={i} className={`grid gap-2 items-start ${
+            <div key={i} data-grid-row className={`grid gap-2 items-start [&>*]:min-w-0 ${
               dt.taxable
-                ? "grid-cols-[2fr_0.9fr_0.5fr_0.7fr_0.9fr_0.7fr_0.7fr_1fr_2.4rem]"
-                : "grid-cols-[3fr_1fr_0.6fr_0.8fr_2.4rem]"
+                ? "grid-cols-[3.2fr_0.9fr_0.6fr_0.7fr_0.9fr_0.7fr_0.7fr_1fr_2.4rem]"
+                : "grid-cols-[4fr_1fr_0.6fr_0.8fr_2.4rem]"
             }`}>
-              <div className="space-y-1">
-                <Select value={it.inventoryId} onChange={(e) => pickInventory(i, e.target.value)}>
-                  <option value="">— from inventory —</option>
-                  {inventory.map((x) => <option key={x.id} value={x.id}>{x.name} (stock: {x.quantity})</option>)}
-                </Select>
-                <Input placeholder="Item name" value={it.name} onChange={(e) => setItem(i, { name: e.target.value })} />
-              </div>
+              <ItemSearch
+                value={it.name}
+                items={inventory}
+                onText={(name) => setItem(i, { name, inventoryId: "" })}
+                onPick={(inv) => pickInventory(i, inv)}
+              />
               <Input value={it.hsnCode} onChange={(e) => setItem(i, { hsnCode: e.target.value })} />
               <Input type="number" min={0} step="0.01" value={it.quantity} onChange={(e) => setItem(i, { quantity: Number(e.target.value) })} />
               <Input
@@ -422,77 +349,9 @@ export default function CreateInvoicePage() {
         </CardContent>
       </Card>
 
-      <Dialog
-        open={boqDialog}
-        onClose={() => setBoqDialog(false)}
-        title={`Bill from BOQ — ${selectedProject?.name || ""}`}
-        size="lg"
-        footer={<>
-          <Button variant="outline" onClick={() => setBoqDialog(false)}>Cancel</Button>
-          <Button onClick={() => {
-            const picked = (selectedProject?.boqItems || [])
-              .map((it, i) => ({ it, p: boqPicks[i] }))
-              .filter(({ p }) => p && p.picked && Number(p.qty) > 0)
-              .map(({ it, p }) => ({
-                inventoryId: "",
-                name: it.name,
-                hsnCode: it.hsnCode || "",
-                quantity: Number(p.qty),
-                sellingPrice: Number(it.rate) || 0,
-                gstRate: Number(it.gstRate) || 0,
-                discount: 0,
-                unit: it.unit || "PCS"
-              }));
-            if (picked.length === 0) {
-              toast({ type: "error", title: "Tick at least one item with a quantity > 0" });
-              return;
-            }
-            // Replace blank starter row, otherwise append
-            setItems((arr) => {
-              const onlyBlank = arr.length === 1 && !arr[0].name && !arr[0].quantity && !arr[0].sellingPrice;
-              return onlyBlank ? picked : [...arr, ...picked];
-            });
-            setBoqDialog(false);
-          }}>Add to invoice</Button>
-        </>}
-      >
-        {selectedProject ? (
-          <div className="space-y-2">
-            <p className="text-sm text-muted-foreground">
-              Tick the BOQ rows you want to bill. You can change the quantity if you're billing a partial milestone.
-            </p>
-            <div className="grid grid-cols-[2.5rem_2.5fr_0.7fr_1fr_0.8fr_1fr] gap-2 text-xs text-muted-foreground px-1 pb-1 border-b">
-              <div></div>
-              <div>Scope</div>
-              <div>Unit</div>
-              <div className="text-right">Bill qty</div>
-              <div className="text-right">Rate</div>
-              <div className="text-right">Amount</div>
-            </div>
-            {(selectedProject.boqItems || []).map((it, i) => {
-              const pick = boqPicks[i] || { picked: false, qty: it.quantity };
-              const amt = (Number(pick.qty) || 0) * (Number(it.rate) || 0);
-              return (
-                <div key={i} className="grid grid-cols-[2.5rem_2.5fr_0.7fr_1fr_0.8fr_1fr] gap-2 items-center py-1.5 border-b last:border-0">
-                  <input type="checkbox" checked={!!pick.picked} onChange={(e) => setBoqPicks((s) => ({ ...s, [i]: { ...pick, picked: e.target.checked } }))} />
-                  <div>
-                    <div className="text-sm font-medium">{it.name}</div>
-                    {it.description ? <div className="text-xs text-muted-foreground">{it.description}</div> : null}
-                    <div className="text-[10px] text-muted-foreground">BOQ qty {it.quantity}</div>
-                  </div>
-                  <div className="text-sm">{it.unit || "—"}</div>
-                  <Input type="number" min={0} step="0.01" value={pick.qty} onChange={(e) => setBoqPicks((s) => ({ ...s, [i]: { ...pick, qty: Number(e.target.value) } }))} />
-                  <div className="text-right text-sm">{formatINR(it.rate)}</div>
-                  <div className="text-right text-sm font-medium">{formatINR(amt)}</div>
-                </div>
-              );
-            })}
-          </div>
-        ) : null}
-      </Dialog>
-
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+      <div className="grid gap-4 lg:grid-cols-3 items-start">
+        <div className="space-y-4 lg:col-span-2">
+        <Card>
           <CardHeader><CardTitle>Notes</CardTitle></CardHeader>
           <CardContent>
             <Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={`Visible on the ${docType.toLowerCase()}.`} />
@@ -513,6 +372,30 @@ export default function CreateInvoicePage() {
                 {dt.value} doesn't track payments — convert to a Tax Invoice when goods/services are delivered.
               </p>
             )}
+          </CardContent>
+        </Card>
+        </div>
+        <Card>
+          <CardHeader><CardTitle>Summary</CardTitle></CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            {computed.invoiceDiscount > 0 && (<>
+              <Row label="Gross value" value={formatINR(computed.gross)} />
+              <Row label="Less: discount" value={"- " + formatINR(computed.invoiceDiscount)} />
+            </>)}
+            <Row label="Taxable value" value={formatINR(computed.subtotal)} />
+            {dt.taxable && (computed.interstate
+              ? <Row label="IGST" value={formatINR(computed.igst)} />
+              : (<><Row label="CGST" value={formatINR(computed.cgst)} /><Row label="SGST" value={formatINR(computed.sgst)} /></>))}
+            {dt.taxable && computed.roundOff !== 0 && <Row label="Round off" value={formatINR(computed.roundOff)} />}
+            <div className="border-t pt-2">
+              <Row label={<strong>Grand Total</strong>} value={<strong>{formatINR(computed.grandTotal)}</strong>} />
+            </div>
+            <div className="text-[11px] text-muted-foreground pt-1">
+              {!dt.taxable
+                ? "Non-taxable document — no GST applied."
+                : (computed.interstate ? "Interstate (IGST)" : "Intrastate (CGST + SGST)")}
+            </div>
+            <Button data-accept className="w-full mt-3" onClick={save} disabled={saving}>{saving ? "Saving…" : `Save ${docType}`}</Button>
           </CardContent>
         </Card>
       </div>

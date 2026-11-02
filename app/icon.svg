@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4338ca"/>
+      <stop offset="1" stop-color="#1e3a8a"/>
+    </linearGradient>
+  </defs>
+  <rect x="16" y="16" width="480" height="480" rx="110" fill="url(#bg)"/>
+  <!-- bill with folded corner and torn bottom edge -->
+  <path d="M146 92 H318 L372 146 V404 L345 386 L318 404 L291 386 L264 404 L237 386 L210 404 L183 386 L146 404 Z" fill="#ffffff"/>
+  <path d="M318 92 V146 H372 Z" fill="#c7d2fe"/>
+  <!-- rupee mark -->
+  <path d="M196 150 H322 M196 186 H322 M206 150 H236 C292 150 292 232 236 232 H206 L300 338"
+        fill="none" stroke="#1e3a8a" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- tricolour accent -->
+  <rect x="146" y="430" width="110" height="18" rx="9" fill="#f59e0b"/>
+  <rect x="262" y="430" width="110" height="18" rx="9" fill="#16a34a"/>
+</svg>

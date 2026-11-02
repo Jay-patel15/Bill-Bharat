@@ -512,11 +512,11 @@ export default function PurchasesPage() {
           </CardContent>
         </Card>
 
-        {/* Supplier Passbook Statement (Jama & Udhar) */}
+        {/* Supplier Passbook Statement (Credit & Debit) */}
         {(() => {
           const supplierTimeline = [];
           supplierPurchases.forEach(p => {
-            // Purchase Bill (Udhar - We Owe Supplier)
+            // Purchase Bill (Credit - We Owe Supplier)
             supplierTimeline.push({
               id: `pur-${p.id}`,
               rawBill: p,
@@ -528,7 +528,7 @@ export default function PurchasesPage() {
               type: "PURCHASE_BILL"
             });
 
-            // Payments Paid (Jama - Money Paid Out to Supplier)
+            // Payments Paid (Debit - Money Paid Out to Supplier)
             if (Array.isArray(p.payments) && p.payments.length > 0) {
               p.payments.forEach(pay => {
                 supplierTimeline.push({
@@ -568,13 +568,13 @@ export default function PurchasesPage() {
           }).reverse();
 
           return (
-            <Card className="border-indigo-100 dark:border-indigo-950">
+            <Card className="border-indigo-100">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <FileText className="h-5 w-5 text-indigo-600" /> Supplier Passbook Statement (Jama & Udhar)
+                  <FileText className="h-5 w-5 text-indigo-600" /> Supplier Passbook Statement (Credit & Debit)
                 </CardTitle>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Chronological supplier passbook: Purchase bills received (Udhar / We Owe) vs Payments paid (Jama / Money Out).
+                  Chronological supplier passbook: Purchase bills received (Credit / We Owe) vs Payments paid (Debit / Money Out).
                 </p>
               </CardHeader>
               <CardContent>
@@ -588,8 +588,8 @@ export default function PurchasesPage() {
                         <TH>Type</TH>
                         <TH>Ref / Bill #</TH>
                         <TH>Particulars / Description</TH>
-                        <TH className="text-right text-rose-600">Udhar (Dr / Purchase Bill)</TH>
-                        <TH className="text-right text-emerald-600">Jama (Cr / Payment Paid)</TH>
+                        <TH className="text-right text-rose-600">Credit (Purchase Bill)</TH>
+                        <TH className="text-right text-emerald-600">Debit (Payment Paid)</TH>
                         <TH className="text-right">Running Payable Balance</TH>
                       </TR>
                     </THead>
@@ -597,7 +597,7 @@ export default function PurchasesPage() {
                       {supplierStatement.map((row, idx) => (
                         <TR 
                           key={idx} 
-                          className={`cursor-pointer hover:bg-muted/50 transition-colors ${row.type === "PAYMENT_PAID" ? "bg-emerald-50/30 dark:bg-emerald-950/10 font-medium" : ""}`}
+                          className={`cursor-pointer hover:bg-muted/50 transition-colors ${row.type === "PAYMENT_PAID" ? "bg-emerald-50/30 font-medium" : ""}`}
                           onClick={() => row.rawBill && openDetail(row.rawBill)}
                         >
                           <TD className="text-xs">{formatDate(row.date)}</TD>

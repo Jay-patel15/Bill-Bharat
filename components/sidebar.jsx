@@ -13,10 +13,10 @@ export function Sidebar({ onLogout }) {
     .sort((a, b) => b.length - a.length)[0];
 
   return (
-    <aside className="hidden md:flex w-64 shrink-0 flex-col border-r bg-card h-full">
+    <aside className="hidden md:flex w-52 xl:w-64 shrink-0 flex-col border-r bg-card h-full">
       <div className="px-5 py-4 border-b">
         <Link href="/dashboard" className="flex items-center gap-2 text-primary font-bold">
-          <div className="h-8 w-8 rounded bg-primary text-primary-foreground grid place-items-center">B</div>
+          <img src="/icon.svg" alt="" className="h-8 w-8" />
           <span>BillBharat</span>
         </Link>
       </div>

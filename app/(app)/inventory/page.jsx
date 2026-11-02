@@ -5,19 +5,20 @@ import * as XLSX from "xlsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Field, Select } from "@/components/ui/input";
-import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
+import { Table, TD, TH, THead, TR } from "@/components/ui/table";
+import { VirtualTBody } from "@/components/ui/virtual-tbody";
 import { Dialog } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { api, useCompany } from "@/components/company-context";
 import { useToast } from "@/components/ui/toast";
-import { formatINR } from "@/lib/utils";
+import { formatINR, localDate } from "@/lib/utils";
 import { GST_SLABS, GST_UNITS } from "@/lib/gst";
 import { NoCompanySelected } from "@/components/empty-state";
 
 
 
 const empty = {
-  name: "", sku: "", category: "", purchasePrice: 0, sellingPrice: 0,
+  name: "", sku: "", barcode: "", category: "", purchasePrice: 0, sellingPrice: 0,
   gstRate: 18, quantity: 0, lowStockThreshold: 0, unit: "PCS", hsnCode: ""
 };
 
@@ -69,6 +70,7 @@ export default function InventoryPage() {
     const rows = list.map((it) => ({
       "Name":               it.name,
       "SKU":                it.sku || "",
+      "Barcode":            it.barcode || "",
       "Category":           it.category || "",
       "HSN Code":           it.hsnCode || "",
       "Unit":               it.unit || "",
@@ -92,12 +94,12 @@ export default function InventoryPage() {
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Stock Report");
-    XLSX.writeFile(wb, `stock-report-${active.name.replace(/\s+/g, "-")}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.writeFile(wb, `stock-report-${active.name.replace(/\s+/g, "-")}-${localDate()}.xlsx`);
     toast({ type: "success", title: "Stock report downloaded!" });
   }
 
   const filtered = list.filter((it) =>
-    [it.name, it.sku, it.category, it.hsnCode].some((f) => (f || "").toLowerCase().includes(search.toLowerCase()))
+    [it.name, it.sku, it.barcode, it.category, it.hsnCode].some((f) => (f || "").toLowerCase().includes(search.toLowerCase()))
   );
 
   return (
@@ -139,8 +141,8 @@ export default function InventoryPage() {
                   <TH />
                 </TR>
               </THead>
-              <TBody>
-                {filtered.map((it) => {
+              <VirtualTBody items={filtered} colSpan={9}>
+                {(it) => {
                   const low = Number(it.quantity) <= Number(it.lowStockThreshold) && Number(it.lowStockThreshold) > 0;
                   return (
                     <TR key={it.id}>
@@ -168,8 +170,8 @@ export default function InventoryPage() {
                       </TD>
                     </TR>
                   );
-                })}
-              </TBody>
+                }}
+              </VirtualTBody>
             </Table>
           )}
         </CardContent>
@@ -191,6 +193,7 @@ export default function InventoryPage() {
         <form id="inv-form" onSubmit={onSubmit} className="grid gap-4 md:grid-cols-2">
           <Field label="Name *"><Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
           <Field label="SKU"><Input value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} /></Field>
+          <Field label="Barcode"><Input value={form.barcode || ""} onChange={(e) => setForm({ ...form, barcode: e.target.value })} /></Field>
           <Field label="HSN code"><Input value={form.hsnCode} onChange={(e) => setForm({ ...form, hsnCode: e.target.value })} /></Field>
           <Field label="Category"><Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} /></Field>
           <Field label="Purchase price"><Input type="number" step="0.01" value={form.purchasePrice} onChange={(e) => setForm({ ...form, purchasePrice: Number(e.target.value) })} /></Field>

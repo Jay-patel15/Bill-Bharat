@@ -14,6 +14,9 @@ export function Dialog({ open, onClose, title, children, footer, size = "md" }) 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={typeof title === "string" ? title : undefined}
         onClick={(e) => e.stopPropagation()}
         className={cn("w-full bg-background rounded-lg shadow-xl border max-h-[90vh] overflow-hidden flex flex-col", widths[size])}
       >

@@ -6,6 +6,7 @@
   "author": "BillBharat",
   "main": "electron/main.js",
   "scripts": {
+    "predev": "node -e \"const fs=require('fs');if(fs.existsSync('.next/BUILD_ID'))fs.rmSync('.next',{recursive:true,force:true})\"",
     "dev": "next dev",
     "dev:app": "electron .",
     "build": "next build && node scripts/prepare-standalone.mjs",
@@ -13,7 +14,8 @@
     "lint": "next lint",
     "check": "node scripts/check-db.mjs",
     "dist": "npm run build && electron-builder",
-    "dist:dir": "npm run build && electron-builder --dir"
+    "dist:dir": "npm run build && electron-builder --dir",
+    "icon": "electron scripts/make-icon.cjs"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
@@ -62,15 +64,27 @@
     ],
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "portable", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "artifactName": "BillBharat-${version}-${arch}.${ext}",
-      "signAndEditExecutable": false
+      "signAndEditExecutable": false,
+      "icon": "electron/icon.png"
     },
     "nsis": {
-      "oneClick": true,
+      "oneClick": false,
       "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "BillBharat"
