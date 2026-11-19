@@ -1,10 +1,10 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Mail, Pencil, Printer, Save, Share2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Field, Input, Select } from "@/components/ui/input";
+import { PaymentSection } from "@/components/payment-section";
 import { StatusBadge } from "@/components/ui/badge";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { api, useCompany } from "@/components/company-context";
@@ -41,12 +41,8 @@ export default function SaleDetailPage({ params }) {
   const [payments, setPayments] = useState([]);
   const [pdfLink, setPdfLink] = useState("");
 
-  const [payAmount, setPayAmount] = useState("");
-  const [payMethod, setPayMethod] = useState("Cash");
-  const [payRef, setPayRef] = useState("");
-  const [editingId, setEditingId] = useState(null);
-  const [payNotes, setPayNotes] = useState("");
-  const payInput = useRef(null);
+  // Set when the customer page opened this invoice to edit one payment.
+  const [openPaymentId, setOpenPaymentId] = useState(null);
 
   async function load() {
     try {
@@ -54,12 +50,11 @@ export default function SaleDetailPage({ params }) {
       setSale(data);
       setItems(data.items || []);
       setPayments(data.payments || []);
-      // Opened from the customer page: load that payment into the Record Payment box.
+      // Opened from the customer page: open that payment for editing (once, then clear the link).
       const editId = new URLSearchParams(window.location.search).get("editPayment");
       if (editId) {
         window.history.replaceState(null, "", window.location.pathname);
-        const p = (data.payments || []).find((x) => x.id === editId);
-        if (p) startEditPayment(p);
+        setOpenPaymentId(editId);
       }
       if (data.pdfUrl) setPdfLink(data.pdfUrl);
       else if (data.notes) {
@@ -95,81 +90,20 @@ export default function SaleDetailPage({ params }) {
   const canEdit = !(getDocumentType(sale.documentType).affectsOutstanding && Number(sale.amountPaid) > 0);
   
   const totalPaid = (payments || []).reduce((sum, p) => sum + Number(p.amount || 0), 0);
-  const pendingBalance = Math.max(0, Number(sale.total || 0) - totalPaid);
-  // Amount entered above what is still pending (not used when correcting the total).
-  // While editing a payment, the room left is the total minus every other payment.
-  const editingPay = payments.find((p) => p.id === editingId);
-  const available = editingPay ? Math.max(0, Number(sale.total || 0) - (totalPaid - Number(editingPay.amount))) : pendingBalance;
-  const overBy = Number(payAmount) > available ? Math.round((Number(payAmount) - available) * 100) / 100 : 0;
-
-  function startEditPayment(p) {
-    setEditingId(p.id);
-    setPayAmount(String(p.amount));
-    setPayMethod(p.method || "Cash");
-    setPayRef("");
-    setPayNotes(p.notes || "");
-    payInput.current?.focus();
+  // Payment callbacks for the shared PaymentSection; each reloads the invoice afterwards.
+  async function recordPayment(d) {
+    await api(`/api/sales/${sale.id}/payments`, { method: "POST", body: JSON.stringify(d) });
+    await load();
   }
 
-  function cancelEdit() {
-    setEditingId(null);
-    setPayAmount("");
-    setPayRef("");
-    setPayNotes("");
+  async function updatePayment(p, d) {
+    await api(`/api/payments/${p.id}`, { method: "PUT", body: JSON.stringify(d) });
+    await load();
   }
 
-  async function savePayment(acceptExcess = false) {
-    if (!payAmount || Number(payAmount) <= 0) {
-      toast({ type: "error", title: "Invalid amount", message: "Please enter a valid payment amount." });
-      return;
-    }
-    // More than the pending amount needs an explicit choice: re-edit, or ignore and record it.
-    if (Number(payAmount) > available && !acceptExcess) return;
-    if (editingPay) {
-      try {
-        await api(`/api/payments/${editingPay.id}`, {
-          method: "PUT",
-          body: JSON.stringify({
-            amount: Number(payAmount),
-            method: payMethod,
-            notes: payNotes
-          })
-        });
-        toast({ type: "success", title: "Payment updated" });
-        cancelEdit();
-        await load();
-      } catch (e) {
-        toast({ type: "error", title: "Failed to update payment", message: e.message });
-      }
-      return;
-    }
-    try {
-      await api(`/api/sales/${sale.id}/payments`, {
-        method: "POST",
-        body: JSON.stringify({
-          amount: Number(payAmount),
-          method: payMethod,
-          notes: payRef ? `${payMethod} Ref: ${payRef}` : `Payment for ${sale.invoiceNumber}`
-        })
-      });
-      toast({ type: "success", title: "Payment recorded successfully" });
-      setPayAmount("");
-      setPayRef("");
-      await load();
-    } catch (e) {
-      toast({ type: "error", title: "Payment failed", message: e.message });
-    }
-  }
-
-  async function deletePayment(paymentId) {
-    if (!confirm("Delete this payment entry?")) return;
-    try {
-      await api(`/api/payments/${paymentId}`, { method: "DELETE" });
-      toast({ type: "success", title: "Payment entry deleted" });
-      await load();
-    } catch (e) {
-      toast({ type: "error", title: "Failed to delete payment", message: e.message });
-    }
+  async function deletePayment(id) {
+    await api(`/api/payments/${id}`, { method: "DELETE" });
+    await load();
   }
 
   /** Print the invoice PDF straight from a hidden frame, no download or new tab. */
@@ -311,134 +245,14 @@ export default function SaleDetailPage({ params }) {
         </Card>
       </div>
 
-      {/* Payment Section with 3 Summary Cards */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle>Update Payment & Receipts</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-
-          {/* 3 Summary Cards for Visual Balance Tracking */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="p-3.5 rounded-lg border bg-slate-50 text-center">
-              <div className="text-[11px] font-semibold text-muted-foreground uppercase">Invoice Total</div>
-              <div className="text-lg font-bold mt-1">{formatINR(sale.total)}</div>
-            </div>
-            <div className="p-3.5 rounded-lg border border-emerald-200 bg-emerald-50/50 text-center">
-              <div className="text-[11px] font-semibold text-emerald-700 uppercase">Amount Received</div>
-              <div className="text-lg font-bold text-emerald-800 mt-1">{formatINR(totalPaid)}</div>
-            </div>
-            <div className="p-3.5 rounded-lg border border-rose-200 bg-rose-50/50 text-center">
-              <div className="text-[11px] font-semibold text-rose-700 uppercase">Pending Balance</div>
-              <div className="text-lg font-bold text-rose-800 mt-1">{formatINR(pendingBalance)}</div>
-            </div>
-          </div>
-
-          {overBy > 0 && (
-            <div className="text-sm text-amber-800 bg-amber-50 border border-amber-300 rounded p-3 space-y-2">
-              <div>
-                ⚠️ <strong>{formatINR(payAmount)}</strong> is more than the pending <strong>{formatINR(pendingBalance)}</strong>:
-                {" "}<strong>{formatINR(overBy)}</strong> extra. Re-edit the amount, or ignore and record it as it is.
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" onClick={() => { payInput.current?.focus(); payInput.current?.select(); }}>Re-edit amount</Button>
-                <Button size="sm" variant="outline" onClick={() => savePayment(true)}>Ignore and record anyway</Button>
-              </div>
-            </div>
-          )}
-
-          {editingPay && (
-            <div className="text-xs text-blue-800 bg-blue-50 border border-blue-200 rounded p-2 flex items-center justify-between gap-2">
-              <span>Editing a payment of {formatINR(editingPay.amount)} ({editingPay.method || "Cash"}). Change the amount or method, then save.</span>
-              <button className="underline whitespace-nowrap" onClick={cancelEdit}>Cancel edit</button>
-            </div>
-          )}
-
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <Field label="Amount received now (₹)">
-              <Input
-                ref={payInput}
-                type="number" 
-                placeholder={`Max ${formatINR(available)}`}
-                value={payAmount} 
-                onChange={(e) => setPayAmount(e.target.value)} 
-              />
-            </Field>
-            <Field label="Payment Method">
-              <Select value={payMethod} onChange={(e) => { setPayMethod(e.target.value); setPayRef(""); }}>
-                <option>Cash</option>
-                <option>UPI</option>
-                <option>NEFT</option>
-                <option>RTGS</option>
-                <option>Cheque</option>
-                <option>Bank Transfer</option>
-              </Select>
-            </Field>
-            {!editingPay && payMethod !== "Cash" && payMethod !== "Bank Transfer" && (
-              <Field label={
-                payMethod === "Cheque" ? "Cheque Number" :
-                payMethod === "UPI" ? "UPI Transaction ID" :
-                "Transaction ID (NEFT/RTGS)"
-              }>
-                <Input 
-                  placeholder={
-                    payMethod === "Cheque" ? "e.g. 004521" :
-                    payMethod === "UPI" ? "e.g. UPI/123456789" :
-                    "e.g. NEFT123456789"
-                  }
-                  value={payRef} 
-                  onChange={(e) => setPayRef(e.target.value)} 
-                />
-              </Field>
-            )}
-            {editingPay && (
-              <div className="md:col-span-2">
-                <Field label="Notes">
-                  <Input value={payNotes} onChange={(e) => setPayNotes(e.target.value)} />
-                </Field>
-              </div>
-            )}
-            <div className="flex items-end md:col-span-2 lg:col-span-1">
-              <Button onClick={() => savePayment()} disabled={overBy > 0} className="w-full">
-                {editingPay ? "Save Payment Changes" : "Record Payment"}
-              </Button>
-            </div>
-          </div>
-
-          {payments.length > 0 && (
-            <div className="pt-4 border-t">
-              <h4 className="text-sm font-semibold mb-3">Payment History</h4>
-              <div className="overflow-x-auto">
-                <Table>
-                  <THead>
-                    <TR>
-                      <TH className="py-2">Date</TH>
-                      <TH className="py-2">Method</TH>
-                      <TH className="py-2 text-right">Amount</TH>
-                      <TH className="py-2">Notes</TH>
-                      <TH className="py-2 text-right">Actions</TH>
-                    </TR>
-                  </THead>
-                  <TBody>
-                    {payments.map((p) => (
-                      <TR key={p.id}>
-                        <TD className="py-2 text-xs">{formatDate(p.date || p.createdAt)}</TD>
-                        <TD className="py-2 text-xs font-medium">{p.method || p.paymentMethod || "Cash"}</TD>
-                        <TD className="py-2 text-xs text-right font-semibold text-emerald-600">+ {formatINR(p.amount)}</TD>
-                        <TD className="py-2 text-xs text-muted-foreground">{p.notes || "—"}</TD>
-                        <TD className="py-2 text-right space-x-1">
-                          <Button size="xs" variant="outline" onClick={() => startEditPayment(p)} className="h-7 text-xs">Edit</Button>
-                          <Button size="xs" variant="outline" onClick={() => deletePayment(p.id)} className="text-rose-600 border-rose-200 hover:bg-rose-50 h-7 text-xs">Delete</Button>
-                        </TD>
-                      </TR>
-                    ))}
-                  </TBody>
-                </Table>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <PaymentSection
+        total={sale.total}
+        payments={payments}
+        startEditId={openPaymentId}
+        onRecord={recordPayment}
+        onUpdate={updatePayment}
+        onDelete={deletePayment}
+      />
     </div>
   );
 }

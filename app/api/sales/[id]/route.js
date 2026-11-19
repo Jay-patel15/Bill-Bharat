@@ -1,6 +1,6 @@
 import { fail, ok, readBody, withUser } from "@/lib/api";
 import { assertCompanyAccess, findById, findWhere, remove, update, transaction } from "@/lib/db";
-import { addPayment, removeDocumentEntries } from "@/lib/accounting";
+import { removeDocumentEntries } from "@/lib/accounting";
 import { getDocumentType } from "@/lib/utils";
 import { moveStock } from "@/lib/consumables";
 import { editSale } from "@/lib/sales";
@@ -34,20 +34,8 @@ export async function PUT(req, { params }) {
       if (patch.dueDate !== undefined) patch.dueDate = patch.dueDate || null;
 
       const updated = await transaction(async () => {
-        let row = Object.keys(patch).length ? await update("sales", sale.id, patch, user.id) : sale;
-        // A new amountPaid is booked as a correcting payment so ledger and invoice stay in step.
-        if (body.amountPaid !== undefined) {
-          const diff = Number(body.amountPaid) - Number(sale.amountPaid || 0);
-          if (!Number.isFinite(diff)) { const e = new Error("Invalid amountPaid"); e.status = 400; throw e; }
-          if (diff !== 0) {
-            row = (await addPayment("SALE", row, {
-              amount: diff,
-              method: body.paymentMethod,
-              notes: diff < 0 ? `Correction for ${sale.invoiceNumber}` : `Payment for ${sale.invoiceNumber}`
-            })).doc;
-          }
-        }
-        return row;
+        // Payments are recorded and edited through /api/sales/[id]/payments and /api/payments/[id] only.
+        return Object.keys(patch).length ? await update("sales", sale.id, patch, user.id) : sale;
       });
       return ok(updated);
     } catch (e) { return fail(e.message, e.status || 500); }

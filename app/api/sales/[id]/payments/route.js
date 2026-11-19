@@ -1,6 +1,7 @@
 import { fail, ok, readBody, withUser } from "@/lib/api";
 import { assertCompanyAccess, findById, findWhere, transaction } from "@/lib/db";
 import { addPayment } from "@/lib/accounting";
+import { paymentState, excessOver } from "@/lib/payments";
 
 export async function POST(req, { params }) {
   return withUser(async (user) => {
@@ -12,6 +13,13 @@ export async function POST(req, { params }) {
       const body = await readBody(req);
       const amount = Number(body.amount);
       if (!Number.isFinite(amount) || amount <= 0) return fail("Valid payment amount required", 400);
+
+      // Above the pending balance only when the user chose "Ignore and record anyway".
+      const rows = await findWhere("payments", { refId: sale.id, type: "SALE" });
+      const { pending } = paymentState({ total: sale.total, payments: rows });
+      if (excessOver(amount, pending) > 0 && !body.acceptExcess) {
+        return fail("Amount is more than the pending balance", 400);
+      }
 
       const { payment, doc } = await transaction(() => addPayment("SALE", sale, {
         amount,

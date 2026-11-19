@@ -48,10 +48,19 @@ For the product overview and how to build the `.exe`, see [README.md](README.md)
 
 ### Changing a payment
 
-- **Edit** on a payment in *Payment History* loads it into the *Record payment* box: amount, payment method and notes. Change them and press **Save Payment Changes**; *Cancel edit* leaves it as it was. The amount cannot take the document above its total.
+- **Edit** on a payment in *Payment History* loads it into the *Record Payment* box: amount, payment method and notes. Change them and press **Save Payment Changes**; *Cancel edit* leaves it as it was.
+- An edit **replaces that payment's amount in place**. No new payment is added, and the party ledger shows the payment as a normal receipt (*Received by …*), not as a correction.
 - A payment with a Transaction ID (UPI, cheque, NEFT, RTGS) keeps its note; edit the note in the **Notes** field.
 - **Delete** removes the payment. The paid amount, status and ledger are updated.
-- The same Edit and Delete buttons are on the customer's *Payments received* list and the supplier bill's *Payment History*.
+- The same Edit and Delete buttons are on the customer's *Payments received* list (Edit opens the invoice with that payment loaded) and on a supplier bill's *Payment History*.
+- The sales invoice and the purchase bill use the **same payment screen**: three figures (Total, Received, Pending), the Record Payment form, and Payment History.
+- **Arithmetic** (`lib/payments.js`, used by the screens and checked again by the server):
+  - Received = the sum of the document's payment rows.
+  - Pending = Total − Received, never below zero.
+  - While one payment is being edited, the room left = Total − the other rows, so its own old amount is not counted.
+  - A payment or edit above the room is refused by the server, unless the user chose **Ignore and record anyway**.
+- **Old correction rows:** before this version, changing a bill's paid amount wrote a negative *Correction* row. Those rows still show as *Correction* in the party ledger. Nothing writes new correction rows now.
+- If the payment being edited is deleted, or disappears after a refresh, edit mode is cancelled with a message. The save never falls back to recording a new payment.
 
 ### Back button and number fields
 
@@ -332,6 +341,8 @@ Building the `.exe` is described in [README.md](README.md#build-the-windows-exe)
 - Run `npm run check` and `npm run build` before shipping.
 - **Every release needs a higher `version` in `package.json`.** The update check ignores a release that is not newer, and the pre-update backup is named after the old version.
 - **Dependencies:** `electron-updater` is the only library added for updates. Do not add another updater without removing it.
+- **A new dependency used by the desktop shell** (`electron/`) must also be listed in `build.files` in `package.json`, with its runtime dependencies. The installer excludes `node_modules` by default. Version 1.0.1 crashed on start because this was missing. After any change, build with `npm run dist:dir` and check that `dist/win-unpacked/resources/app/node_modules/<package>` exists.
+- **Run the self-checks** before a release: `node scripts/test-payment-edit.mjs`, `node scripts/test-gst-payments.mjs`, `node scripts/test-sale-edit.mjs`, `node scripts/test-consumables.mjs`, `node scripts/test-back.mjs`.
 
 ---
 
@@ -370,7 +381,44 @@ The Daily Book (cash book), the expense manager, the manual cash vouchers and th
 
 ---
 
-## 10. Changes in this version (1.0.1)
+## 10. Changes
+
+### Version 1.0.3
+
+**Added**
+
+- **Payments on purchase bills** use the same screen as sales invoices: Total, Received and Pending figures, the Record Payment form, **Close bill**, and Payment History with **Edit** and **Delete** (`components/payment-section.jsx`).
+- **Payment arithmetic in one place** (`lib/payments.js`), used by the screens and checked by the server. See *Changing a payment*.
+- **Server checks on payments:** a payment or an edit above the amount still due is refused unless *Ignore and record anyway* was chosen. Payments on a draft purchase are refused until it is approved.
+- **New route:** `POST /api/purchases/[id]/payments`, the same as the sales payment route.
+- **Self-check:** `scripts/test-payment-edit.mjs` (run with `node scripts/test-payment-edit.mjs`).
+
+**Changed**
+
+- **Editing a payment** replaces its amount in place. It is shown in the party ledger as a normal receipt (*Received by …*), not as a correction.
+- **Edit mode is safe:** saving while editing never records a new payment. If the payment being edited is gone, edit mode is cancelled with a message.
+
+**Fixed**
+
+- **Correction rows:** changing a paid amount on an invoice or a bill no longer writes a negative *Correction* row. The old `amountPaid` branch is removed from the sales and purchase update routes.
+- **Purchase bill payments** no longer send a total, which could record nothing or record a correction when the page showed a stale amount.
+- **Product master names** (Settings) showed an error when a name could not be saved or removed, because the toast was not declared. Fixed.
+
+**Not changed (still in place)**
+
+- Old *Correction* rows created by earlier versions still show as *Correction* in the party ledger. They are kept as they are.
+
+### Version 1.0.2
+
+**Fixed**
+
+- **The installed app would not start** (1.0.1 crashed with `Cannot find module 'electron-updater'`). The installer now includes `electron-updater` and its runtime dependencies (see `build.files` in `package.json`).
+
+**Added**
+
+- **Settings → Updates → Check for updates** (desktop app only). A browser shows a note in its place.
+
+### Version 1.0.1
 
 **Added**
 

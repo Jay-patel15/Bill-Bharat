@@ -172,6 +172,7 @@ function TermsEditor() {
 
 /** Master product names: what the AI reader maps supplier wording onto. */
 function ProductNames() {
+  const toast = useToast();
   const [list, setList] = useState([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);

@@ -1,6 +1,6 @@
 import { fail, ok, readBody, withUser } from "@/lib/api";
 import { assertCompanyAccess, findById, findWhere, remove, update, query, transaction } from "@/lib/db";
-import { addPayment, recordPurchaseAccounting, removeDocumentEntries, findStockFor } from "@/lib/accounting";
+import { recordPurchaseAccounting, removeDocumentEntries, findStockFor } from "@/lib/accounting";
 
 async function loadPurchase(user, id) {
   const p = await findById("purchases", id);
@@ -39,17 +39,7 @@ export async function PUT(req, { params }) {
           const posted = await query(`SELECT 1 AS x FROM ledger_entries WHERE "refId" = $1 LIMIT 1`, [p.id]);
           if (!posted.length) await recordPurchaseAccounting(row);
         }
-        if (body.amountPaid !== undefined) {
-          const diff = Number(body.amountPaid) - Number(p.amountPaid || 0);
-          if (!Number.isFinite(diff)) { const e = new Error("Invalid amountPaid"); e.status = 400; throw e; }
-          if (diff !== 0) {
-            row = (await addPayment("PURCHASE", row, {
-              amount: diff,
-              method: body.paymentMethod,
-              notes: body.paymentNotes || `Payment for bill ${p.billNumber}`
-            })).doc;
-          }
-        }
+        // Payments are recorded and edited through /api/purchases/[id]/payments and /api/payments/[id] only.
         return row;
       });
       return ok(await withPayments(updated));

@@ -54,7 +54,7 @@ Saving a sale takes stock out. Deleting the sale puts it back.
 
 **Changing a payment:** under *Payment History*, press **Edit** on the payment. Its amount, method and note load into the *Record payment* box. Change them and press **Save Payment Changes**. Press **Cancel edit** to keep it as it was. Press **Delete** to remove the payment.
 
-Paying a supplier works the same way: open the bill under **Purchases**. From a customer's page, **Edit** on a payment opens that invoice with the payment ready to change.
+Paying a supplier works the same way: open the bill under **Purchases**. It has the same payment box and history as an invoice, and **Close bill** records the whole amount still due. From a customer's page, **Edit** on a payment opens that invoice with the payment ready to change.
 
 ---
 
