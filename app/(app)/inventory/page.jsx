@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { api, useCompany } from "@/components/company-context";
 import { useToast } from "@/components/ui/toast";
 import { formatINR, localDate } from "@/lib/utils";
-import { GST_SLABS, GST_UNITS } from "@/lib/gst";
+import { GST_SLABS, GST_UNITS, isGstCompany } from "@/lib/gst";
 import { NoCompanySelected } from "@/components/empty-state";
 
 
@@ -24,6 +24,7 @@ const empty = {
 
 export default function InventoryPage() {
   const { active } = useCompany();
+  const gstOn = isGstCompany(active);
   const toast = useToast();
   const [list, setList] = useState([]);
   const [search, setSearch] = useState("");
@@ -39,6 +40,17 @@ export default function InventoryPage() {
   }
   useEffect(() => { load(); }, [active?.id]);
 
+  // The Electrical Works consumables line is an invoice item, not stock: keep it out of the list and report.
+  const stock = list.filter((it) => !Number(it.consumables));
+  const consumablesOn = list.some((it) => Number(it.consumables) === 1);
+
+  async function toggleConsumables() {
+    try {
+      await api("/api/inventory/consumables", { method: "POST", body: JSON.stringify({ enabled: !consumablesOn }) });
+      toast({ type: "success", title: consumablesOn ? "Electrical Works disabled" : "Electrical Works enabled" });
+      await load();
+    } catch (e) { toast({ type: "error", title: "Could not change setting", message: e.message }); }
+  }
 
   // ── Add / Edit product ────────────────────────────────────────────────────
   async function onSubmit(e) {
@@ -67,7 +79,7 @@ export default function InventoryPage() {
 
   // ── Stock Report Download (Excel) ─────────────────────────────────────────
   function downloadStockReport() {
-    const rows = list.map((it) => ({
+    const rows = stock.map((it) => ({
       "Name":               it.name,
       "SKU":                it.sku || "",
       "Barcode":            it.barcode || "",
@@ -80,7 +92,8 @@ export default function InventoryPage() {
       "Qty in Stock":       Number(it.quantity || 0),
       "Low Stock Alert":    Number(it.lowStockThreshold || 0),
       "Stock Value (₹)":    Number(it.quantity || 0) * Number(it.purchasePrice || 0),
-      "Status":             Number(it.quantity) <= Number(it.lowStockThreshold) && Number(it.lowStockThreshold) > 0
+      "Status":             Number(it.quantity) < 0 ? "NEGATIVE STOCK"
+                              : Number(it.quantity) <= Number(it.lowStockThreshold) && Number(it.lowStockThreshold) > 0
                               ? "LOW STOCK" : "OK"
     }));
 
@@ -98,7 +111,7 @@ export default function InventoryPage() {
     toast({ type: "success", title: "Stock report downloaded!" });
   }
 
-  const filtered = list.filter((it) =>
+  const filtered = stock.filter((it) =>
     [it.name, it.sku, it.barcode, it.category, it.hsnCode].some((f) => (f || "").toLowerCase().includes(search.toLowerCase()))
   );
 
@@ -111,7 +124,9 @@ export default function InventoryPage() {
           <p className="text-sm text-muted-foreground">Products with HSN, GST rate, stock and low-stock alerts.</p>
         </div>
         <div className="flex gap-2 flex-wrap">
-
+          <Button variant="outline" onClick={toggleConsumables}>
+            {consumablesOn ? "Disable Electrical Works consumables" : "Enable Electrical Works consumables"}
+          </Button>
           <Button variant="outline" onClick={downloadStockReport}>
             <Download className="h-4 w-4 mr-1" /> Stock Report
           </Button>
@@ -134,7 +149,7 @@ export default function InventoryPage() {
             <Table>
               <THead>
                 <TR>
-                  <TH>Name</TH><TH>SKU</TH><TH>HSN</TH><TH>Unit</TH><TH>GST</TH>
+                  <TH>Name</TH><TH>SKU</TH><TH>HSN</TH><TH>Unit</TH>{gstOn && <TH>GST</TH>}
                   <TH className="text-right">Buy</TH>
                   <TH className="text-right">Sell</TH>
                   <TH className="text-right">Stock</TH>
@@ -144,6 +159,7 @@ export default function InventoryPage() {
               <VirtualTBody items={filtered} colSpan={9}>
                 {(it) => {
                   const low = Number(it.quantity) <= Number(it.lowStockThreshold) && Number(it.lowStockThreshold) > 0;
+                  const negative = Number(it.quantity) < 0;
                   return (
                     <TR key={it.id}>
                       <TD className="font-medium">
@@ -153,12 +169,12 @@ export default function InventoryPage() {
                       <TD>{it.sku || "—"}</TD>
                       <TD>{it.hsnCode || "—"}</TD>
                       <TD><Badge variant="outline">{it.unit || "PCS"}</Badge></TD>
-                      <TD>{it.gstRate}%</TD>
+                      {gstOn && <TD>{it.gstRate}%</TD>}
                       <TD className="text-right">{formatINR(it.purchasePrice)}</TD>
                       <TD className="text-right">{formatINR(it.sellingPrice)}</TD>
                       <TD className="text-right">
-                        <span className={low ? "text-amber-600 font-semibold" : ""}>{it.quantity} {it.unit || "PCS"}</span>
-                        {low ? <Badge variant="warning" className="ml-2">Low</Badge> : null}
+                        <span className={negative ? "text-red-600 font-semibold" : low ? "text-amber-600 font-semibold" : ""}>{it.quantity} {it.unit || "PCS"}</span>
+                        {negative ? <Badge variant="danger" className="ml-2">Negative</Badge> : low ? <Badge variant="warning" className="ml-2">Low</Badge> : null}
                       </TD>
                       <TD className="text-right space-x-1">
                         <Button size="sm" variant="outline" onClick={() => { setForm({ ...empty, ...it }); setOpen(true); }}>
@@ -198,11 +214,13 @@ export default function InventoryPage() {
           <Field label="Category"><Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} /></Field>
           <Field label="Purchase price"><Input type="number" step="0.01" value={form.purchasePrice} onChange={(e) => setForm({ ...form, purchasePrice: Number(e.target.value) })} /></Field>
           <Field label="Selling price"><Input type="number" step="0.01" value={form.sellingPrice} onChange={(e) => setForm({ ...form, sellingPrice: Number(e.target.value) })} /></Field>
-          <Field label="GST %">
-            <Select value={form.gstRate} onChange={(e) => setForm({ ...form, gstRate: Number(e.target.value) })}>
-              {GST_SLABS.map((r) => <option key={r} value={r}>{r}%</option>)}
-            </Select>
-          </Field>
+          {gstOn && (
+            <Field label="GST %">
+              <Select value={form.gstRate} onChange={(e) => setForm({ ...form, gstRate: Number(e.target.value) })}>
+                {GST_SLABS.map((r) => <option key={r} value={r}>{r}%</option>)}
+              </Select>
+            </Field>
+          )}
           <Field label="Unit">
             <Input
               list="gst-unit-list-inv"

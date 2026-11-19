@@ -7,6 +7,7 @@ import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { ReportsNav } from "@/components/reports-nav";
 import { formatINR, localDate } from "@/lib/utils";
+import { isGstCompany } from "@/lib/gst";
 import { NoCompanySelected } from "@/components/empty-state";
 import { useCompany, api } from "@/components/company-context";
 
@@ -30,6 +31,17 @@ export default function GstReportPage() {
   }, [active?.id, from, to]);
 
   if (!active) return <NoCompanySelected />;
+
+  if (!isGstCompany(active)) return (
+    <div className="space-y-6">
+      <ReportsNav />
+      <Card>
+        <CardContent className="p-6 text-sm text-muted-foreground">
+          The GST report is available once this company has a GSTIN. Add it in Settings → Company details.
+        </CardContent>
+      </Card>
+    </div>
+  );
 
   return (
     <div className="space-y-6">

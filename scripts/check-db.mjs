@@ -245,7 +245,7 @@ await check("a reused $n placeholder binds the same value", async () => {
 
 await check("migrations are recorded once", async () => {
   const rows = await query("SELECT version FROM _schema_migrations ORDER BY version");
-  assert.deepEqual(rows.map((r) => r.version), [1, 2, 3]);
+  assert.deepEqual(rows.map((r) => r.version), [1, 2, 3, 4]);
 });
 
 const { closeDb, snapshot, restoreFrom } = await import(pathToFileURL(path.join(stagedLib, "db", "sqlite.js")).href);
@@ -320,36 +320,6 @@ await check("addPayment books two balanced lines and recomputes paid/status from
   assert.ok(lines.some((l) => l.ledgerName === "UPI" && l.debit === 400));
   const second = await transaction(() => acc.addPayment("SALE", inv, { amount: 600 }));
   assert.deepEqual([second.doc.amountPaid, second.doc.status], [1000, "Paid"]);
-});
-
-await check("cash vouchers post Jama/Udhar correctly and can be deleted as a pair", async () => {
-  const jama = await transaction(() => acc.recordCashVoucher(company.id, { direction: "IN", date: "2026-09-01", amount: 5000, mode: "Cash", head: "Owner capital" }));
-  const udhar = await transaction(() => acc.recordCashVoucher(company.id, { direction: "OUT", date: "2026-09-02", amount: 1200, mode: "Cash", head: "Labour / Wages" }));
-  const jl = await ledgerOf(jama.id), ul = await ledgerOf(udhar.id);
-  assert.ok(balanced(jl) && balanced(ul));
-  assert.ok(jl.some((l) => l.ledgerName === "Cash" && l.debit === 5000), "Jama debits cash");
-  assert.ok(ul.some((l) => l.ledgerName === "Cash" && l.credit === 1200), "Udhar credits cash");
-  assert.equal(ul.find((l) => l.debit > 0).type, "EXPENSE");
-  await transaction(() => acc.deleteCashVoucher(company.id, udhar.id));
-  assert.equal((await ledgerOf(udhar.id)).length, 0);
-});
-
-await check("contra moves money between cash and bank, balanced, and deletes as a pair", async () => {
-  const c = await transaction(() => acc.recordCashVoucher(company.id, { direction: "CONTRA", date: "2026-09-03", amount: 2000, mode: "Cash", head: "Bank Transfer" }));
-  const lines = await ledgerOf(c.id);
-  assert.ok(balanced(lines));
-  assert.ok(lines.some((l) => l.ledgerName === "Bank Transfer" && l.debit === 2000 && l.type === "CONTRA"));
-  assert.ok(lines.some((l) => l.ledgerName === "Cash" && l.credit === 2000));
-  await transaction(() => acc.deleteCashVoucher(company.id, c.id));
-  assert.equal((await ledgerOf(c.id)).length, 0);
-});
-
-await check("deleteCashVoucher refuses payment and invoice entries", async () => {
-  const inv = await insert("sales", { companyId: company.id, customerId: customer.id, documentType: "Tax Invoice", invoiceNumber: "INV-GUARD", total: 50 });
-  const { payment } = await transaction(() => acc.addPayment("SALE", inv, { amount: 50 }));
-  await assert.rejects(() => acc.deleteCashVoucher(company.id, payment.id), /Only manual/);
-  await assert.rejects(() => acc.deleteCashVoucher(company.id, inv.id), /Only manual/);
-  assert.equal((await ledgerOf(payment.id)).length, 2);
 });
 
 await check("supplier outstanding groups unpaid bills by supplier name and skips drafts and paid bills", async () => {

@@ -1,28 +1,40 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Plus, Trash2, RefreshCw } from "lucide-react";
+import { ArrowDown, ArrowUp, Plus, Trash2, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { api, useCompany } from "@/components/company-context";
 import { useToast } from "@/components/ui/toast";
-import { computeInvoice, gstStateFromGstin, GST_SLABS, GST_UNITS } from "@/lib/gst";
-import { formatINR, nextInvoiceNumber, DEFAULT_NUMBER_FORMAT, DOCUMENT_TYPES, getDocumentType, formatInvoiceNotes, STATES, localDate } from "@/lib/utils";
+import { Dialog } from "@/components/ui/dialog";
+import { computeInvoice, gstStateFromGstin, GST_SLABS, GST_UNITS, isGstCompany } from "@/lib/gst";
+import { formatINR, nextInvoiceNumber, DEFAULT_NUMBER_FORMAT, DOCUMENT_TYPES, getDocumentType, formatInvoiceNotes, parseInvoiceNotes, STATES, localDate } from "@/lib/utils";
 import { NoCompanySelected } from "@/components/empty-state";
 import { ItemSearch } from "@/components/item-search";
 import { MASTER_CREATED } from "@/components/quick-create";
+import { navReplace } from "@/components/back-handler";
 
 const blankItem = () => ({
   inventoryId: "", name: "", hsnCode: "", quantity: 1,
   sellingPrice: 0, gstRate: 18, discount: 0, unit: "PCS"
 });
 
+const blankTransport = {
+  challanNumber: "", challanDate: "", orderNumber: "", orderDate: "", lrNumber: "", lrDate: "",
+  transporter: "", ewayNumber: "", paymentTerms: "", consigneeSameAsBuyer: true, consigneeName: "",
+  consigneeAddress: "", consigneeGst: "", consigneePhone: "", consigneeState: "", consigneeStateCode: ""
+};
+
 export default function CreateInvoicePage() {
   const router = useRouter();
   const search = useSearchParams();
   const toast = useToast();
   const { active } = useCompany();
+  const gstOn = isGstCompany(active); // no GSTIN on the company: bill without GST
+  const [showCost, setShowCost] = useState(false); // on-screen only: purchase rate and margin, never printed
+  // ?edit=<saleId> opens an existing document: same form, saved with PUT. Number and customer stay fixed.
+  const editId = search.get("edit") || "";
 
   const [docType, setDocType] = useState(search.get("type") || "Tax Invoice");
   const [customers, setCustomers] = useState([]);
@@ -35,29 +47,16 @@ export default function CreateInvoicePage() {
   const [dueDate, setDueDate] = useState("");
   const [discount, setDiscount] = useState(0);
   const [amountPaid, setAmountPaid] = useState(0);
+  const [excessOk, setExcessOk] = useState(false); // user chose to keep an amount above the total
+  const paidInput = useRef(null);
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const [consumableLine, setConsumableLine] = useState(null); // item index whose consumables popup is open
+  const [draft, setDraft] = useState([]);
   const [numberDirty, setNumberDirty] = useState(false);
   const [numberFormat, setNumberFormat] = useState(DEFAULT_NUMBER_FORMAT);
   const [showTransport, setShowTransport] = useState(false);
-  const [transport, setTransport] = useState({
-    challanNumber: "",
-    challanDate: "",
-    orderNumber: "",
-    orderDate: "",
-    lrNumber: "",
-    lrDate: "",
-    transporter: "",
-    ewayNumber: "",
-    paymentTerms: "",
-    consigneeSameAsBuyer: true,
-    consigneeName: "",
-    consigneeAddress: "",
-    consigneeGst: "",
-    consigneePhone: "",
-    consigneeState: "",
-    consigneeStateCode: ""
-  });
+  const [transport, setTransport] = useState(blankTransport);
 
   useEffect(() => {
     if (!active?.id) return;
@@ -66,6 +65,30 @@ export default function CreateInvoicePage() {
     api("/api/sales").then(setAllSales).catch(() => setAllSales([]));
     api("/api/settings/invoice-template").then((r) => setNumberFormat(r.template.text.numberFormat)).catch(() => {});
   }, [active?.id]);
+
+  // Edit mode: fill the form from the saved document. Its notes hold the transport details as metadata.
+  useEffect(() => {
+    if (!editId || !active?.id) return;
+    api(`/api/sales/${editId}`).then((s) => {
+      if (getDocumentType(s.documentType).affectsOutstanding && Number(s.amountPaid) > 0) {
+        throw new Error("This invoice has payments. Only unpaid invoices can be edited");
+      }
+      const { notes: plain, metadata } = parseInvoiceNotes(s.notes || "");
+      setDocType(s.documentType || "Tax Invoice");
+      setCustomerId(s.customerId || "");
+      setNumberDirty(true);
+      setInvoiceNumber(s.invoiceNumber || "");
+      setInvoiceDate(s.invoiceDate || localDate());
+      setDueDate(s.dueDate || "");
+      setItems(s.items?.length ? s.items : [blankItem()]);
+      setDiscount(Number(s.discount) || 0);
+      setNotes(plain);
+      setTransport({ ...blankTransport, ...metadata });
+    }).catch((e) => {
+      toast({ type: "error", title: "Could not open invoice", message: e.message });
+      navReplace(router, "/sales");
+    });
+  }, [editId, active?.id]);
 
   // Alt+C quick create: add the new customer/item to the lists (and select a new customer).
   useEffect(() => {
@@ -94,16 +117,27 @@ export default function CreateInvoicePage() {
   const recipientStateCode = customer?.stateCode || gstStateFromGstin(customer?.gstNumber || "") || supplierStateCode;
 
   const computed = useMemo(() => {
-    const c = computeInvoice({ items, supplierStateCode, recipientStateCode, invoiceDiscount: Number(discount) || 0, roundToRupee: dt.taxable });
+    // Same rule as the server: without a GSTIN every line is priced at 0% GST.
+    const priced = gstOn ? items : items.map((it) => ({ ...it, gstRate: 0 }));
+    const c = computeInvoice({ items: priced, supplierStateCode, recipientStateCode, invoiceDiscount: Number(discount) || 0, roundToRupee: dt.taxable });
     if (!dt.taxable) {
       for (const it of c.items) { it.cgst = it.sgst = it.igst = 0; it.total = it.taxable; }
       c.cgst = c.sgst = c.igst = 0;
       c.grandTotal = c.subtotal;
     }
     return c;
-  }, [items, supplierStateCode, recipientStateCode, discount, dt.taxable]);
+  }, [items, supplierStateCode, recipientStateCode, discount, dt.taxable, gstOn]);
 
-  function setItem(i, patch) { setItems((arr) => arr.map((it, idx) => idx === i ? { ...it, ...patch } : it)); }
+  const overPaid = dt.affectsOutstanding && !editId && Number(amountPaid) > computed.grandTotal + 0.001 && !excessOk;
+
+  // Typing or picking a name in the last row also opens a blank row under it (auto add row).
+  function setItem(i, patch) {
+    setItems((arr) => {
+      const next = arr.map((it, idx) => idx === i ? { ...it, ...patch } : it);
+      return i === arr.length - 1 && patch.name?.trim() ? [...next, blankItem()] : next;
+    });
+  }
+  function insertRow(at) { setItems((arr) => [...arr.slice(0, at), blankItem(), ...arr.slice(at)]); }
   function pickInventory(i, inv) {
     setItem(i, {
       inventoryId: inv.id,
@@ -111,8 +145,33 @@ export default function CreateInvoicePage() {
       hsnCode: inv.hsnCode || "",
       sellingPrice: Number(inv.sellingPrice) || 0,
       gstRate: Number(inv.gstRate) || 0,
-      unit: inv.unit || "PCS"
+      unit: inv.unit || "PCS",
+      consumablesUsed: []
     });
+    if (Number(inv.consumables) && docType === "Tax Invoice") openConsumables(i, []);
+  }
+
+  // Stock items only: the Electrical Works line itself is not a part.
+  const stockItems = inventory.filter((x) => !Number(x.consumables));
+  // A line whose item was removed still shows its parts so they can be edited.
+  const isConsumablesLine = (it) => {
+    const row = inventory.find((x) => x.id === it.inventoryId);
+    return row ? Number(row.consumables) > 0 : (it.consumablesUsed || []).length > 0;
+  };
+  const blankPart = () => ({ inventoryId: "", name: "", unit: "", quantity: 1 });
+
+  function openConsumables(i, parts) {
+    setDraft(parts.length ? parts.map((p) => ({ ...p })) : [blankPart()]);
+    setConsumableLine(i);
+  }
+  function setDraftRow(r, patch) { setDraft((d) => d.map((p, idx) => idx === r ? { ...p, ...patch } : p)); }
+  function saveConsumables() {
+    if (draft.some((p) => p.name && !p.inventoryId)) return toast({ type: "error", title: "Pick each part from the stock list" });
+    if (draft.some((p) => p.inventoryId && !(Number(p.quantity) > 0))) return toast({ type: "error", title: "Quantity must be more than zero" });
+    const used = draft.filter((p) => p.inventoryId)
+      .map(({ inventoryId, name, unit, quantity }) => ({ inventoryId, name, unit, quantity: Number(quantity) }));
+    setItem(consumableLine, { consumablesUsed: used });
+    setConsumableLine(null);
   }
   function regenerateNumber() {
     setNumberDirty(false);
@@ -121,23 +180,29 @@ export default function CreateInvoicePage() {
 
   async function save() {
     if (!customerId) return toast({ type: "error", title: "Pick a customer" });
-    if (items.length === 0 || items.some((i) => !i.name)) return toast({ type: "error", title: "Add at least one named item" });
+    // Rows with no item name (the blank row auto-add leaves at the bottom) are not saved.
+    const named = items.filter((i) => i.name);
+    if (named.length === 0) return toast({ type: "error", title: "Add at least one named item" });
+    if (overPaid) return toast({ type: "error", title: "Amount received is more than the total", message: "Re-edit it, or choose Ignore and save anyway." });
     setSaving(true);
     try {
-      const created = await api("/api/sales", {
-        method: "POST",
-        body: JSON.stringify({
-          documentType: docType,
-          invoiceNumber: invoiceNumber.trim(),
-          customerId,
-          invoiceDate, dueDate, items,
-          discount: Number(discount) || 0,
-          amountPaid: Number(amountPaid) || 0,
-          notes: formatInvoiceNotes(notes, transport)
-        })
-      });
-      toast({ type: "success", title: `${docType} created`, message: created.invoiceNumber });
-      router.replace(`/sales/${created.id}`);
+      // Consumables are issued on a Tax Invoice only; other documents carry none.
+      const lines = named.map((it) => ({ ...it, consumablesUsed: docType === "Tax Invoice" ? it.consumablesUsed || [] : [] }));
+      const common = { invoiceDate, dueDate, items: lines, discount: Number(discount) || 0, notes: formatInvoiceNotes(notes, transport) };
+      const saved = editId
+        ? await api(`/api/sales/${editId}`, { method: "PUT", body: JSON.stringify(common) })
+        : await api("/api/sales", {
+          method: "POST",
+          body: JSON.stringify({
+            ...common,
+            documentType: docType,
+            invoiceNumber: invoiceNumber.trim(),
+            customerId,
+            amountPaid: Number(amountPaid) || 0
+          })
+        });
+      toast({ type: "success", title: editId ? `${docType} updated` : `${docType} created`, message: saved.invoiceNumber });
+      navReplace(router, `/sales/${saved.id}`);
     } catch (e) {
       toast({ type: "error", title: "Could not save", message: e.message });
     } finally { setSaving(false); }
@@ -145,11 +210,17 @@ export default function CreateInvoicePage() {
 
   if (!active) return <NoCompanySelected />;
 
+  const itemCols = !dt.taxable
+    ? "grid-cols-[4fr_1fr_0.6fr_0.8fr_2.4rem]"
+    : gstOn
+      ? "grid-cols-[3.2fr_0.9fr_0.6fr_0.7fr_0.9fr_0.7fr_0.7fr_1fr_2.4rem]"
+      : "grid-cols-[3.2fr_0.9fr_0.6fr_0.7fr_0.9fr_0.7fr_1fr_2.4rem]";
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">New {docType}</h1>
+          <h1 className="text-2xl font-semibold">{editId ? `Edit ${docType}` : `New ${docType}`}</h1>
           <p className="text-sm text-muted-foreground">
             Previous {docType.toLowerCase()} no.: <span className="font-mono text-foreground">{previousNumber || "none yet"}</span>
             {" · "}This one: <span className="font-mono text-foreground">{invoiceNumber || "—"}</span>
@@ -157,23 +228,25 @@ export default function CreateInvoicePage() {
         </div>
       </div>
 
-      {/* Doc-type pill bar */}
-      <div className="flex flex-wrap gap-2">
-        {DOCUMENT_TYPES.map((t) => (
-          <button
-            key={t.value}
-            onClick={() => setDocType(t.value)}
-            className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
-              docType === t.value
-                ? "bg-primary text-primary-foreground border-primary"
-                : "bg-background hover:bg-accent"
-            }`}
-          >
-            {t.value}
-            <span className="ml-2 text-[10px] opacity-70">{t.prefix}</span>
-          </button>
-        ))}
-      </div>
+      {/* Doc-type pill bar (fixed when editing) */}
+      {!editId && (
+        <div className="flex flex-wrap gap-2">
+          {DOCUMENT_TYPES.map((t) => (
+            <button
+              key={t.value}
+              onClick={() => setDocType(t.value)}
+              className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
+                docType === t.value
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-background hover:bg-accent"
+              }`}
+            >
+              {t.value}
+              <span className="ml-2 text-[10px] opacity-70">{t.prefix}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="space-y-4">
         <Card>
@@ -181,14 +254,16 @@ export default function CreateInvoicePage() {
           <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <Field label={`${docType} number *`} hint="Auto-numbered; ↻ restores the next number">
               <div className="flex gap-2">
-                <Input value={invoiceNumber} onChange={(e) => { setInvoiceNumber(e.target.value); setNumberDirty(true); }} />
-                <Button type="button" variant="outline" size="icon" onClick={regenerateNumber} title="Auto-generate">
-                  <RefreshCw className="h-4 w-4" />
-                </Button>
+                <Input disabled={!!editId} value={invoiceNumber} onChange={(e) => { setInvoiceNumber(e.target.value); setNumberDirty(true); }} />
+                {!editId && (
+                  <Button type="button" variant="outline" size="icon" onClick={regenerateNumber} title="Auto-generate">
+                    <RefreshCw className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
             </Field>
             <Field label="Customer *">
-              <Select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
+              <Select disabled={!!editId} value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
                 <option value="">Select customer…</option>
                 {customers.map((c) => <option key={c.id} value={c.id}>{c.name}{c.gstNumber ? ` · ${c.gstNumber}` : ""}</option>)}
               </Select>
@@ -287,9 +362,11 @@ export default function CreateInvoicePage() {
       <Card>
         <CardHeader className="flex-row items-center justify-between">
           <CardTitle>Items</CardTitle>
-          <Button data-add-row size="sm" variant="outline" onClick={() => setItems((a) => [...a, blankItem()])}>
-            <Plus className="h-3.5 w-3.5" /> Add row
-          </Button>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => setShowCost((s) => !s)}>
+              {showCost ? "Hide purchase rate" : "Show purchase rate"}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-2" data-grid>
           <datalist id="gst-unit-list">
@@ -297,32 +374,47 @@ export default function CreateInvoicePage() {
               <option key={u} value={u} />
             ))}
           </datalist>
-          <div className={`grid gap-2 [&>*]:min-w-0 text-xs text-muted-foreground px-2 ${
-            dt.taxable
-              ? "grid-cols-[3.2fr_0.9fr_0.6fr_0.7fr_0.9fr_0.7fr_0.7fr_1fr_2.4rem]"
-              : "grid-cols-[4fr_1fr_0.6fr_0.8fr_2.4rem]"
-          }`}>
+          <div className={`grid gap-2 [&>*]:min-w-0 text-xs text-muted-foreground px-2 ${itemCols}`}>
             <div>Item</div>
             <div>HSN</div>
             <div>Qty</div>
             <div>Unit</div>
             {dt.taxable && (
-              <><div>Rate</div><div>GST%</div><div>Disc</div><div className="text-right">Total</div></>
+              <><div>Rate</div>{gstOn && <div>GST%</div>}<div>Disc</div><div className="text-right">Total</div></>
             )}
             <div />
           </div>
           {items.map((it, i) => (
-            <div key={i} data-grid-row className={`grid gap-2 items-start [&>*]:min-w-0 ${
-              dt.taxable
-                ? "grid-cols-[3.2fr_0.9fr_0.6fr_0.7fr_0.9fr_0.7fr_0.7fr_1fr_2.4rem]"
-                : "grid-cols-[4fr_1fr_0.6fr_0.8fr_2.4rem]"
-            }`}>
-              <ItemSearch
-                value={it.name}
-                items={inventory}
-                onText={(name) => setItem(i, { name, inventoryId: "" })}
-                onPick={(inv) => pickInventory(i, inv)}
-              />
+            <div key={i} data-grid-row className={`grid gap-2 items-start [&>*]:min-w-0 ${itemCols}`}>
+              <div className="min-w-0">
+                <ItemSearch
+                  value={it.name}
+                  items={inventory.filter((x) => Number(x.consumables) !== 2)}
+                  onText={(name) => setItem(i, { name, inventoryId: "", consumablesUsed: [] })}
+                  onPick={(inv) => pickInventory(i, inv)}
+                />
+                {showCost && (() => {
+                  // Linked item, or else a stock item whose name / SKU matches the typed text (typing clears the link).
+                  const typed = (it.name || "").trim().toLowerCase();
+                  const stock = inventory.find((x) => x.id === it.inventoryId)
+                    || (typed && inventory.find((x) => x.name?.trim().toLowerCase() === typed || (x.sku && x.sku.trim().toLowerCase() === typed)));
+                  if (!stock) return <div className="mt-1 text-[11px] text-muted-foreground">Purchase rate: not a stock item</div>;
+                  const buy = Number(stock.purchasePrice) || 0;
+                  const sell = Number(it.sellingPrice) || 0;
+                  return (
+                    <div className="mt-1 text-[11px] text-muted-foreground">
+                      Purchase rate {buy > 0 ? formatINR(buy) : "not recorded"}
+                      {buy > 0 ? ` · margin ${(((sell - buy) / buy) * 100).toFixed(1)}%` : ""}
+                      <span className="text-amber-700"> (preview only, not printed)</span>
+                    </div>
+                  );
+                })()}
+                {isConsumablesLine(it) && docType === "Tax Invoice" && (
+                  <button type="button" onClick={() => openConsumables(i, it.consumablesUsed || [])} className="mt-1 text-xs text-primary hover:underline">
+                    Consumables: {(it.consumablesUsed || []).length} part(s) · edit
+                  </button>
+                )}
+              </div>
               <Input value={it.hsnCode} onChange={(e) => setItem(i, { hsnCode: e.target.value })} />
               <Input type="number" min={0} step="0.01" value={it.quantity} onChange={(e) => setItem(i, { quantity: Number(e.target.value) })} />
               <Input
@@ -334,16 +426,22 @@ export default function CreateInvoicePage() {
               {dt.taxable && (
                 <>
                   <Input type="number" min={0} step="0.01" value={it.sellingPrice} onChange={(e) => setItem(i, { sellingPrice: Number(e.target.value) })} />
-                  <Select value={it.gstRate} onChange={(e) => setItem(i, { gstRate: Number(e.target.value) })}>
-                    {GST_SLABS.map((r) => <option key={r} value={r}>{r}%</option>)}
-                  </Select>
+                  {gstOn && (
+                    <Select value={it.gstRate} onChange={(e) => setItem(i, { gstRate: Number(e.target.value) })}>
+                      {GST_SLABS.map((r) => <option key={r} value={r}>{r}%</option>)}
+                    </Select>
+                  )}
                   <Input type="number" min={0} step="0.01" value={it.discount} onChange={(e) => setItem(i, { discount: Number(e.target.value) })} />
                   <div className="text-right pt-2 text-sm">{formatINR(computed.items[i]?.total || 0)}</div>
                 </>
               )}
-              <Button variant="ghost" size="icon" onClick={() => setItems((a) => a.filter((_, idx) => idx !== i))}>
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              <div className="flex">
+                <Button variant="ghost" size="icon" className="h-8 w-7" title="Insert row above" onClick={() => insertRow(i)}><ArrowUp className="h-3.5 w-3.5" /></Button>
+                <Button variant="ghost" size="icon" className="h-8 w-7" title="Insert row below" onClick={() => insertRow(i + 1)}><ArrowDown className="h-3.5 w-3.5" /></Button>
+                <Button variant="ghost" size="icon" className="h-8 w-7" title="Delete row" onClick={() => setItems((a) => a.filter((_, idx) => idx !== i))}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           ))}
         </CardContent>
@@ -363,10 +461,24 @@ export default function CreateInvoicePage() {
             <Field label="Document-level discount (₹)">
               <Input type="number" min={0} step="0.01" value={discount} onChange={(e) => setDiscount(Number(e.target.value))} />
             </Field>
-            {dt.affectsOutstanding ? (
+            {editId && dt.affectsOutstanding ? (
+              <p className="text-xs text-muted-foreground">Payments are recorded on the invoice page, not here.</p>
+            ) : dt.affectsOutstanding ? (
+              <>
               <Field label="Amount received (₹)">
-                <Input type="number" min={0} step="0.01" value={amountPaid} onChange={(e) => setAmountPaid(Number(e.target.value))} />
+                <Input ref={paidInput} type="number" min={0} step="0.01" value={amountPaid}
+                  onChange={(e) => { setAmountPaid(Number(e.target.value)); setExcessOk(false); }} />
               </Field>
+              {overPaid && (
+                <div className="text-sm text-amber-800 bg-amber-50 border border-amber-300 rounded p-3 space-y-2">
+                  <div>⚠️ <strong>{formatINR(amountPaid)}</strong> is more than the bill total <strong>{formatINR(computed.grandTotal)}</strong>. Re-edit the amount, or ignore and save it as it is.</div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="outline" onClick={() => { paidInput.current?.focus(); paidInput.current?.select(); }}>Re-edit amount</Button>
+                    <Button size="sm" variant="outline" onClick={() => setExcessOk(true)}>Ignore and save anyway</Button>
+                  </div>
+                </div>
+              )}
+              </>
             ) : (
               <p className="text-xs text-muted-foreground">
                 {dt.value} doesn't track payments — convert to a Tax Invoice when goods/services are delivered.
@@ -383,7 +495,7 @@ export default function CreateInvoicePage() {
               <Row label="Less: discount" value={"- " + formatINR(computed.invoiceDiscount)} />
             </>)}
             <Row label="Taxable value" value={formatINR(computed.subtotal)} />
-            {dt.taxable && (computed.interstate
+            {dt.taxable && gstOn && (computed.interstate
               ? <Row label="IGST" value={formatINR(computed.igst)} />
               : (<><Row label="CGST" value={formatINR(computed.cgst)} /><Row label="SGST" value={formatINR(computed.sgst)} /></>))}
             {dt.taxable && computed.roundOff !== 0 && <Row label="Round off" value={formatINR(computed.roundOff)} />}
@@ -393,12 +505,61 @@ export default function CreateInvoicePage() {
             <div className="text-[11px] text-muted-foreground pt-1">
               {!dt.taxable
                 ? "Non-taxable document — no GST applied."
-                : (computed.interstate ? "Interstate (IGST)" : "Intrastate (CGST + SGST)")}
+                : !gstOn
+                  ? "No GST: add the company GSTIN in Company settings to bill with GST."
+                  : (computed.interstate ? "Interstate (IGST)" : "Intrastate (CGST + SGST)")}
             </div>
-            <Button data-accept className="w-full mt-3" onClick={save} disabled={saving}>{saving ? "Saving…" : `Save ${docType}`}</Button>
+            <Button data-accept className="w-full mt-3" onClick={save} disabled={saving || overPaid}>{saving ? "Saving…" : `Save ${docType}`}</Button>
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={consumableLine !== null} onClose={() => setConsumableLine(null)} title="Consumables used on Electrical Works" size="lg"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setConsumableLine(null)}>Cancel</Button>
+            <Button onClick={saveConsumables}>Done</Button>
+          </>
+        }>
+        <p className="text-xs text-muted-foreground mb-3">
+          Parts used on this work are issued from stock. They are not printed on the invoice; the Electrical Works line is what the customer sees.
+        </p>
+        <div className="space-y-2">
+          <div className="grid grid-cols-[3fr_0.9fr_0.7fr_2.4rem] gap-2 text-xs text-muted-foreground px-1">
+            <div>Part</div><div>Qty</div><div>Unit</div><div />
+          </div>
+          {draft.map((p, r) => {
+            const inStock = stockItems.find((x) => x.id === p.inventoryId);
+            const short = inStock && Number(p.quantity) > Number(inStock.quantity);
+            return (
+              <div key={r} className="grid grid-cols-[3fr_0.9fr_0.7fr_2.4rem] gap-2 items-start">
+                <div className="min-w-0">
+                  <ItemSearch
+                    value={p.name}
+                    items={stockItems}
+                    placeholder="Search part…"
+                    onText={(name) => setDraftRow(r, { name, inventoryId: "", unit: "" })}
+                    onPick={(inv) => setDraftRow(r, { inventoryId: inv.id, name: inv.name, unit: inv.unit || "PCS" })}
+                  />
+                  {inStock && (
+                    <div className={`text-[11px] mt-1 ${short ? "text-amber-600" : "text-muted-foreground"}`}>
+                      In stock: {inStock.quantity} {inStock.unit || "PCS"}{short ? " — stock will go negative" : ""}
+                    </div>
+                  )}
+                </div>
+                <Input type="number" min={0} step="0.01" value={p.quantity} onChange={(e) => setDraftRow(r, { quantity: Number(e.target.value) })} />
+                <div className="pt-2 text-sm">{p.unit}</div>
+                <Button variant="ghost" size="icon" onClick={() => setDraft((d) => d.filter((_, idx) => idx !== r))}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+        <Button variant="outline" size="sm" className="mt-3" onClick={() => setDraft((d) => [...d, blankPart()])}>
+          <Plus className="h-3.5 w-3.5" /> Add part
+        </Button>
+      </Dialog>
     </div>
   );
 }

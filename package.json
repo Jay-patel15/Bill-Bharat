@@ -1,6 +1,6 @@
 {
   "name": "billbharat",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Offline GST invoicing, inventory and finance for Indian businesses",
   "author": "BillBharat",
@@ -14,6 +14,7 @@
     "lint": "next lint",
     "check": "node scripts/check-db.mjs",
     "dist": "npm run build && electron-builder",
+    "release": "npm run build && electron-builder --win nsis --publish always",
     "dist:dir": "npm run build && electron-builder --dir",
     "icon": "electron scripts/make-icon.cjs"
   },
@@ -22,6 +23,7 @@
     "bcryptjs": "^2.4.3",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
+    "electron-updater": "^6.8.11",
     "jose": "^5.9.6",
     "jspdf": "^2.5.2",
     "jspdf-autotable": "^3.8.4",
@@ -42,6 +44,7 @@
     "eslint": "^8.57.1",
     "eslint-config-next": "14.2.18",
     "postcss": "^8.4.49",
+    "rcedit": "^4.0.1",
     "tailwindcss": "^3.4.15"
   },
   "engines": {
@@ -51,6 +54,7 @@
     "appId": "com.billbharat.desktop",
     "productName": "BillBharat",
     "asar": false,
+    "afterPack": "./scripts/set-exe-icon.cjs",
     "files": [
       "electron/**/*",
       "package.json",
@@ -79,7 +83,7 @@
       ],
       "artifactName": "BillBharat-${version}-${arch}.${ext}",
       "signAndEditExecutable": false,
-      "icon": "electron/icon.png"
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -87,10 +91,19 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "BillBharat"
+      "shortcutName": "BillBharat",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico"
     },
     "portable": {
       "artifactName": "BillBharat-${version}-portable.exe"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "Jay-patel15",
+      "repo": "Bill-Bharat",
+      "releaseType": "release"
     },
     "directories": {
       "output": "dist",

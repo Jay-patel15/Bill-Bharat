@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { CompanyForm } from "@/components/company-form";
 import { api, useCompany } from "@/components/company-context";
 import { useToast } from "@/components/ui/toast";
+import { navReplace } from "@/components/back-handler";
 
 export default function CreateCompanyPage() {
   const router = useRouter();
@@ -16,7 +17,7 @@ export default function CreateCompanyPage() {
       await refresh();
       setActive(created.id);
       toast({ type: "success", title: "Company created" });
-      router.replace("/dashboard");
+      navReplace(router, "/dashboard");
     } catch (e) {
       toast({ type: "error", title: "Could not create", message: e.message });
     }

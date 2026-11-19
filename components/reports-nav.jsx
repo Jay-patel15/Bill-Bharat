@@ -9,7 +9,6 @@ const REPORT_TABS = [
   { href: "/reports/finance", label: "Finance Overview" },
   { href: "/reports/outstanding", label: "Outstanding Dues" },
   { href: "/reports/ledger", label: "Party Ledger" },
-  { href: "/reports/daybook", label: "Rojmel (Cash Book)" },
   { href: "/reports/audit", label: "Audit Log" }
 ];
 

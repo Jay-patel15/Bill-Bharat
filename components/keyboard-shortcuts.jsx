@@ -2,12 +2,10 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { OPEN_QUICK_CREATE } from "./quick-create";
+import { goBack } from "./back-handler";
 
-/** Tally-style voucher keys: each opens a new entry of that kind (contra, payment and receipt in Rojmel). F7 is unused: no manual journals. */
+/** Keys that open a new sale or purchase. */
 export const VOUCHER_KEYS = {
-  F4: { href: "/reports/daybook?entry=CONTRA", label: "Contra" },
-  F5: { href: "/reports/daybook?entry=OUT", label: "Payment" },
-  F6: { href: "/reports/daybook?entry=IN", label: "Receipt" },
   F8: { href: "/sales/create-invoice", label: "Sales" },
   F9: { href: "/purchase/create", label: "Purchase" }
 };
@@ -43,7 +41,7 @@ function nextField(el) {
  *   Enter  next field (submits on the last one)    Esc  close dialog / go back
  *   Alt+A  accept (save) the current form          F2   jump to the date field
  *   Alt+C  quick-create a customer, or an item when in an item grid
- *   F4–F6, F8, F9  open a new voucher (contra, payment, receipt, sale, purchase)
+ *   F8, F9         open a new sale or purchase
  */
 export function KeyboardShortcuts() {
   const router = useRouter();
@@ -82,7 +80,7 @@ export function KeyboardShortcuts() {
         // Dialogs close themselves; only leave the screen when none is open.
         if (document.querySelector("[role=dialog]")) return;
         if (el && el !== document.body && el.matches("input, select, textarea")) { el.blur(); return; }
-        router.back();
+        goBack(router);
         return;
       }
 

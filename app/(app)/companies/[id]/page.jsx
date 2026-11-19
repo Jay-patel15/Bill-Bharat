@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CompanyForm } from "@/components/company-form";
 import { api, useCompany } from "@/components/company-context";
 import { useToast } from "@/components/ui/toast";
+import { navReplace } from "@/components/back-handler";
 
 export default function EditCompanyPage({ params }) {
   const router = useRouter();
@@ -13,7 +14,7 @@ export default function EditCompanyPage({ params }) {
   const [company, setCompany] = useState(null);
 
   useEffect(() => {
-    api(`/api/companies/${params.id}`).then(setCompany).catch(() => router.replace("/companies"));
+    api(`/api/companies/${params.id}`).then(setCompany).catch(() => navReplace(router, "/companies"));
   }, [params.id]);
 
   async function onSubmit(form) {
@@ -21,7 +22,7 @@ export default function EditCompanyPage({ params }) {
       await api(`/api/companies/${params.id}`, { method: "PUT", body: JSON.stringify(form) });
       await refresh();
       toast({ type: "success", title: "Saved" });
-      router.replace("/companies");
+      navReplace(router, "/companies");
     } catch (e) {
       toast({ type: "error", title: "Save failed", message: e.message });
     }

@@ -2,7 +2,7 @@
 
 **Offline GST billing, inventory and accounts for Indian businesses: a Windows desktop app, in the spirit of Tally.**
 
-BillBharat makes GST tax invoices, tracks stock, purchases, payments and expenses, and keeps your cash book (Rojmel) and party ledgers, all on your own PC. There is no server and no cloud account: your books are one file in your Windows profile, backed up automatically before every update. It works fully without internet; the only online feature is the optional AI bill reader.
+BillBharat makes GST tax invoices, tracks stock, purchases and payments, and keeps your party ledgers, all on your own PC. There is no server and no cloud account: your books are one file in your Windows profile, backed up automatically before every update. It works fully without internet. The only online features are the optional AI bill reader and *Settings → Check for updates*, which contacts GitHub only when you press it.
 
 Full guide (using the app, settings, data, how it works, troubleshooting): **[DOCUMENTATION.md](DOCUMENTATION.md)**
 
@@ -16,15 +16,15 @@ Full guide (using the app, settings, data, how it works, troubleshooting): **[DO
 | **Industrial invoice print** | The standard bordered A4 GST bill: logo, company name and tagline, GSTIN/PAN/state, Rule 46 notice, Original/Duplicate/Triplicate, challan/order/LR/transporter/e-way/payment details, buyer and consignee, ruled item grid with taxes, bank details, declaration, numbered terms, signatures. Long bills continue onto page 2 by themselves. |
 | **Invoice template editor** | Turn any part of the invoice on or off and rename it, with a live A4 preview. Set your own invoice number format (e.g. `INV/{FY}/{###}`). |
 | **Company settings** | Edit company name, GSTIN, PAN, address, contacts, logo, bank details and terms & conditions from Settings. |
-| **Inventory** | Items with SKU, barcode, HSN, GST rate, unit and stock; sales take stock out, purchases put it in. |
+| **Inventory** | Items with SKU, barcode, HSN, GST rate, unit and stock; sales take stock out, purchases put it in. Negative stock is shown in red. |
+| **Electrical Works** | Bill a lump sum for electrical work while the cable, pipe and breakers used come out of stock (not printed on the invoice). |
+| **Edit and send invoices** | Edit unpaid invoices (stock and ledger follow automatically). Send the PDF by WhatsApp or email with a ready message. Payments above the amount pending need a choice: re-edit or ignore. |
 | **Purchases** | Supplier bills typed in, or read from a PDF/photo by AI (optional). |
-| **Payments** | Full or part payments on invoices and bills; status follows automatically. |
-| **Expenses** | Simple expense manager by head and month. |
-| **Rojmel (cash book)** | Every rupee in (Debit) and out (Credit) by cash, UPI, bank or cheque, with running balance. |
+| **Payments** | Full or part payments on invoices and bills; status follows automatically. Each payment can be edited (amount, method, note) or deleted from its payment history. |
 | **Party ledger & outstanding** | For every customer and supplier: a detailed running ledger of bills and payments, for all invoices or the ones you tick. Printable PDFs. |
 | **Reports** | Sales, GST summary, GSTR-1 JSON, finance overview, audit log, Excel export. |
-| **Keyboard first** | Tally-style keys: `F4` contra, `F5` payment, `F6` receipt, `F8` sale, `F9` purchase (each opens a new entry), `Alt+A` save, `Alt+C` quick create, `F2` date, `Enter` next field, `Esc` back. |
-| **Safe by default** | Password login with recovery code, automatic daily backups and backups before updates, copies to your own backup folders (Google Drive / OneDrive / Dropbox folder, pen drive, other drive, network share), uploaded files included, a reminder when backups haven't left the PC for 7 days, one-click restore, a password-protected *Reset (erase all books)* that backs up first, multiple companies in one install. |
+| **Keyboard first** | A *Back* button in the top bar. Keys: `F8` sale, `F9` purchase (each opens a new entry), `Alt+A` save, `Alt+C` quick create, `F2` date, `Enter` next field, `Esc` back. |
+| **Safe by default** | Password login with a recovery code (a new one can be made in Settings), automatic daily backups and backups before updates, copies to your own backup folders (Google Drive / OneDrive / Dropbox folder, pen drive, other drive, network share), uploaded files included, a reminder when backups haven't left the PC for 7 days, one-click restore, a password-protected *Reset (erase all books)* that backs up first, multiple companies in one install. |
 
 ## Install and use
 
@@ -79,6 +79,19 @@ npm run dist
 
 For a quicker test build without installers: `npm run dist:dir` (produces only `dist\win-unpacked\`).
 
+### Publishing a new version (for *Settings → Check for updates*)
+
+The app checks the public GitHub repo `Jay-patel15/Bill-Bharat` for a newer installer. To ship one:
+
+1. Raise `"version"` in `package.json` (for example `1.0.1` → `1.0.2`). The installed app only offers a version higher than its own.
+2. Create a GitHub token with permission to write releases to the repo, then in PowerShell: `$env:GH_TOKEN = "<token>"`.
+3. Run `npm run release`. It builds the installer and uploads it, with `latest.yml`, to a new GitHub release.
+4. Check that the release on GitHub lists the `BillBharat-<version>-x64.exe` file and `latest.yml`.
+
+Users then press **Settings → Check for updates**, confirm, and the app downloads, installs and restarts. The portable exe cannot update itself; those users download the new installer.
+
+Do not commit `GH_TOKEN`. Keep it in your environment only.
+
 ### Releasing an update
 
 1. Raise `"version"` in `package.json` (for example `1.0.0` → `1.0.1`).
@@ -87,7 +100,7 @@ For a quicker test build without installers: `npm run dist:dir` (produces only `
 
 ### Optional
 
-- **App icon / logo:** the logo is `electron/icon.svg` (a bill with the ₹ sign and a saffron-green stripe). After editing it run `npm run icon` to redraw `electron/icon.png` (used for the exe, installer, window and taskbar; the SVG itself is the start-up splash), and copy the SVG to `app/icon.svg` (sidebar and browser tab).
+- **App icon / logo:** the logo is `electron/icon.svg` (a bill with the ₹ sign and a saffron-green stripe). After editing it run `npm run icon` to redraw `electron/icon.png` (the window and taskbar icon, and the start-up splash), copy the SVG to `app/icon.svg` (sidebar and browser tab), and regenerate `build/icon.ico` (the Windows icon for the installer, uninstaller and desktop shortcut) from the PNG. The program file gets the icon from `build/icon.ico` after packing, in `scripts/set-exe-icon.cjs` (run by electron-builder's `afterPack`, using the `rcedit` dev dependency), because electron-builder's own icon step needs Windows symlink rights that many PCs do not grant.
 - **Code signing:** the build is unsigned, so Windows SmartScreen shows "Windows protected your PC" on first run ("More info" → "Run anyway"). To avoid it, sign with a code-signing certificate (electron-builder `win.certificateFile` / `CSC_LINK`).
 
 ### If the build fails

@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Select, Textarea } from "@/components/ui/input";
@@ -178,7 +177,6 @@ export default function InvoiceTemplatePage() {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Link href="/settings"><Button variant="ghost" size="icon" aria-label="Back to settings"><ArrowLeft className="h-4 w-4" /></Button></Link>
           <div>
             <h1 className="text-xl font-semibold">Invoice template</h1>
             <p className="text-xs text-muted-foreground">{custom ? "Custom layout for " : "Default layout for "}{active.name}. Applies to every invoice PDF of this company.</p>

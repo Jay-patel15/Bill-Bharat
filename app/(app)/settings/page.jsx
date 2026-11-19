@@ -1,13 +1,14 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Building2, FileText, KeyRound, ScrollText, Tags, Trash2 } from "lucide-react";
+import { Building2, FileText, KeyRound, RefreshCw, ScrollText, Tags, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { api, useCompany } from "@/components/company-context";
 import { NoCompanySelected } from "@/components/empty-state";
 import { BackupCard, ResetCard } from "@/components/backup-card";
+import { useToast } from "@/components/ui/toast";
 
 function Section({ icon: Icon, title, hint, children }) {
   return (
@@ -64,6 +65,65 @@ function GeminiKey() {
         <Button type="button" size="sm" variant="outline" disabled={busy || (!key && !status.hasKey)} onClick={test}>Test</Button>
         {status.hasKey && <Button type="button" size="sm" variant="outline" disabled={busy} onClick={remove}>Remove</Button>}
       </form>
+      {msg && <p className={`text-sm ${msg.ok ? "text-emerald-700" : "text-destructive"}`}>{msg.text}</p>}
+    </Section>
+  );
+}
+
+/** Recovery code for the password reset on the login page. Stored hashed, so a new one is made and shown once. */
+function RecoveryCode() {
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function regenerate() {
+    if (!confirm("Make a new recovery code? The old one will stop working.")) return;
+    setBusy(true); setErr("");
+    try { setCode((await api("/api/auth/recovery-code", { method: "POST" })).recoveryCode); }
+    catch (e) { setErr(e.message); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <Section icon={KeyRound} title="Recovery code" hint="Used to reset your password if you forget it. Shown only once, so write it down.">
+      <Button size="sm" variant="outline" disabled={busy} onClick={regenerate}>{code ? "Make another code" : "Make new recovery code"}</Button>
+      {code && <p className="font-mono text-lg font-semibold tracking-wider">{code}</p>}
+      {err && <p className="text-sm text-destructive">{err}</p>}
+    </Section>
+  );
+}
+
+/** Checks GitHub for a newer BillBharat and installs it on request. Desktop app only. */
+function UpdateCard() {
+  const [desktop, setDesktop] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  useEffect(() => { setDesktop(Boolean(window.billbharatDesktop)); }, []);
+
+  async function check() {
+    setBusy(true); setMsg(null);
+    try {
+      const r = await window.billbharatDesktop.checkForUpdates();
+      if (r.status === "latest") setMsg({ ok: true, text: `You have the latest version (${r.version}).` });
+      else if (r.status === "dev") setMsg({ ok: true, text: "Updates are checked in the installed app only." });
+      else if (r.status === "error") setMsg({ ok: false, text: `Could not check for updates: ${r.message}` });
+      else if (r.status === "available") {
+        if (!confirm(`Version ${r.version} is available. Download it and restart BillBharat now? Your books are kept.`)) {
+          setMsg({ ok: true, text: `Version ${r.version} is available. Press Check again to install it.` });
+          return;
+        }
+        setMsg({ ok: true, text: `Downloading version ${r.version}…` });
+        const i = await window.billbharatDesktop.installUpdate();
+        if (i.status === "error") setMsg({ ok: false, text: `Update failed: ${i.message}` });
+      }
+    } catch (e) { setMsg({ ok: false, text: e.message }); }
+    finally { setBusy(false); }
+  }
+
+  if (!desktop) return null;
+  return (
+    <Section icon={RefreshCw} title="Updates" hint="Looks for a newer BillBharat on GitHub. Your books are not changed by an update.">
+      <Button size="sm" variant="outline" disabled={busy} onClick={check}>{busy ? "Checking…" : "Check for updates"}</Button>
       {msg && <p className={`text-sm ${msg.ok ? "text-emerald-700" : "text-destructive"}`}>{msg.text}</p>}
     </Section>
   );
@@ -127,7 +187,7 @@ function ProductNames() {
       await api("/api/product-mappings", { method: "POST", body: JSON.stringify({ items }) });
       setText("");
       await load();
-    } catch (err) { alert(err.message); }
+    } catch (err) { toast({ type: "error", title: "Failed", message: err.message }); }
     finally { setBusy(false); }
   }
 
@@ -136,7 +196,7 @@ function ProductNames() {
     try {
       await api(`/api/product-mappings/${id}`, { method: "DELETE" });
       setList((prev) => prev.filter((m) => m.id !== id));
-    } catch (err) { alert(err.message); }
+    } catch (err) { toast({ type: "error", title: "Failed", message: err.message }); }
   }
 
   return (
@@ -162,6 +222,7 @@ function ProductNames() {
 }
 
 export default function SettingsPage() {
+  const toast = useToast();
   const { active } = useCompany();
   if (!active) return <NoCompanySelected />;
 
@@ -181,7 +242,9 @@ export default function SettingsPage() {
         <TermsEditor />
         <BackupCard />
         <GeminiKey />
+        <RecoveryCode />
         <ProductNames />
+        <UpdateCard />
         <ResetCard />
       </div>
     </div>

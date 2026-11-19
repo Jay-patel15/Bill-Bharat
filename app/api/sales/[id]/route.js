@@ -2,6 +2,8 @@ import { fail, ok, readBody, withUser } from "@/lib/api";
 import { assertCompanyAccess, findById, findWhere, remove, update, transaction } from "@/lib/db";
 import { addPayment, removeDocumentEntries } from "@/lib/accounting";
 import { getDocumentType } from "@/lib/utils";
+import { moveStock } from "@/lib/consumables";
+import { editSale } from "@/lib/sales";
 
 async function loadSale(user, id) {
   const s = await findById("sales", id);
@@ -26,6 +28,7 @@ export async function PUT(req, { params }) {
     try {
       const sale = await loadSale(user, params.id);
       const body = await readBody(req);
+      if (Array.isArray(body.items)) return ok(await editSale(user, sale, body));
       const patch = {};
       for (const k of ["status", "notes", "dueDate", "pdfUrl"]) if (body[k] !== undefined) patch[k] = body[k];
       if (patch.dueDate !== undefined) patch.dueDate = patch.dueDate || null;
@@ -56,15 +59,7 @@ export async function DELETE(_req, { params }) {
     try {
       const sale = await loadSale(user, params.id);
       await transaction(async () => {
-        if (getDocumentType(sale.documentType).affectsStock) {
-          for (const it of sale.items || []) {
-            if (!it.inventoryId) continue;
-            const inv = await findById("inventory", it.inventoryId);
-            if (inv && inv.companyId === sale.companyId) {
-              await update("inventory", inv.id, { quantity: Number(inv.quantity || 0) + Number(it.quantity || 0) }, user.id);
-            }
-          }
-        }
+        if (getDocumentType(sale.documentType).affectsStock) await moveStock(sale.companyId, sale.items, 1, user.id);
         await removeDocumentEntries("SALE", sale.id);
         await remove("sales", sale.id, user.id);
       });

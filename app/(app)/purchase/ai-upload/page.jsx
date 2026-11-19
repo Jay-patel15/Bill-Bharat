@@ -10,9 +10,10 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { api, useCompany } from "@/components/company-context";
 import { useToast } from "@/components/ui/toast";
-import { computeInvoice, gstStateFromGstin, GST_SLABS } from "@/lib/gst";
+import { computeInvoice, gstStateFromGstin, GST_SLABS, isGstCompany } from "@/lib/gst";
 import { formatINR, localDate } from "@/lib/utils";
 import { NoCompanySelected } from "@/components/empty-state";
+import { navReplace } from "@/components/back-handler";
 
 const blankItem = () => ({
   name: "", sku: "", hsnCode: "", quantity: 1, unit: "PCS",
@@ -23,6 +24,7 @@ export default function AiUploadPage() {
   const router = useRouter();
   const toast = useToast();
   const { active } = useCompany();
+  const gstOn = isGstCompany(active); // without a GSTIN no GST is claimed on the bill
 
   const [file, setFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState("");
@@ -118,11 +120,11 @@ export default function AiUploadPage() {
   const computed = useMemo(() => {
     if (!parsed) return null;
     return computeInvoice({
-      items: (parsed.items || []).map((i) => ({ ...i, sellingPrice: Number(i.purchasePrice) || 0 })),
+      items: (parsed.items || []).map((i) => ({ ...i, sellingPrice: Number(i.purchasePrice) || 0, gstRate: gstOn ? i.gstRate : 0 })),
       supplierStateCode: gstStateFromGstin(parsed.supplierGst),
       recipientStateCode: active?.stateCode || gstStateFromGstin(active?.gstNumber)
     });
-  }, [parsed, active?.stateCode, active?.gstNumber]);
+  }, [parsed, active?.stateCode, active?.gstNumber, gstOn]);
 
   if (!active) return <NoCompanySelected />;
 
@@ -163,7 +165,7 @@ export default function AiUploadPage() {
         })
       });
       toast({ type: "success", title: asDraft ? "Saved as draft" : "Approved & inventory updated" });
-      router.replace("/purchase");
+      navReplace(router, "/purchase");
     } catch (e) {
       toast({ type: "error", title: "Save failed", message: e.message });
     } finally {
@@ -319,6 +321,7 @@ export default function AiUploadPage() {
                     key={i}
                     item={it}
                     computed={computed?.items[i]}
+                    gstOn={gstOn}
                     inventory={inventory}
                     onChange={(patch) => setItem(i, patch)}
                     onRemove={() => removeItem(i)}
@@ -335,10 +338,10 @@ export default function AiUploadPage() {
             {/* Totals */}
             <div className="rounded-md border bg-muted/30 p-3 space-y-1.5 text-sm">
               <Row label="Subtotal" value={formatINR(computed?.subtotal || 0)} />
-              {interstate
+              {gstOn && (interstate
                 ? <Row label="IGST" value={formatINR(computed?.igst || 0)} />
-                : (<><Row label="CGST" value={formatINR(computed?.cgst || 0)} /><Row label="SGST" value={formatINR(computed?.sgst || 0)} /></>)}
-              <Row label="Total Tax (GST)" value={formatINR(totalTax)} />
+                : (<><Row label="CGST" value={formatINR(computed?.cgst || 0)} /><Row label="SGST" value={formatINR(computed?.sgst || 0)} /></>))}
+              {gstOn && <Row label="Total Tax (GST)" value={formatINR(totalTax)} />}
               <div className="border-t pt-2 mt-2 flex items-baseline justify-between">
                 <span className="font-semibold">Total Amount</span>
                 <span className="text-2xl font-bold">{formatINR(computed?.grandTotal || 0)}</span>
@@ -365,7 +368,7 @@ export default function AiUploadPage() {
   );
 }
 
-function ItemCard({ item, computed, inventory, onChange, onRemove }) {
+function ItemCard({ item, computed, gstOn, inventory, onChange, onRemove }) {
   return (
     <div className="rounded-md border-2 border-slate-300 p-3 space-y-2 bg-background shadow-sm">
       <div className="flex flex-col gap-2 mb-2 border-b pb-3">
@@ -411,11 +414,13 @@ function ItemCard({ item, computed, inventory, onChange, onRemove }) {
         <LabeledMini label="Rate">
           <Input type="number" min={0} step="0.01" value={item.purchasePrice} onChange={(e) => onChange({ purchasePrice: Number(e.target.value) })} />
         </LabeledMini>
-        <LabeledMini label="GST%">
-          <Select value={item.gstRate} onChange={(e) => onChange({ gstRate: Number(e.target.value) })}>
-            {GST_SLABS.map((r) => <option key={r} value={r}>{r}%</option>)}
-          </Select>
-        </LabeledMini>
+        {gstOn && (
+          <LabeledMini label="GST%">
+            <Select value={item.gstRate} onChange={(e) => onChange({ gstRate: Number(e.target.value) })}>
+              {GST_SLABS.map((r) => <option key={r} value={r}>{r}%</option>)}
+            </Select>
+          </LabeledMini>
+        )}
         <LabeledMini label="Disc">
           <Input type="number" min={0} step="0.01" value={item.discount} onChange={(e) => onChange({ discount: Number(e.target.value) })} />
         </LabeledMini>

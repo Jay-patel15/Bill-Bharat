@@ -5,6 +5,7 @@ import { PurchaseForm } from "@/components/purchase-form";
 import { api, useCompany } from "@/components/company-context";
 import { useToast } from "@/components/ui/toast";
 import { NoCompanySelected } from "@/components/empty-state";
+import { navReplace } from "@/components/back-handler";
 
 export default function CreatePurchasePage() {
   const router = useRouter();
@@ -17,7 +18,7 @@ export default function CreatePurchasePage() {
     try {
       await api("/api/purchases", { method: "POST", body: JSON.stringify(form) });
       toast({ type: "success", title: "Purchase recorded" });
-      router.replace("/purchase");
+      navReplace(router, "/purchase");
     } catch (e) {
       toast({ type: "error", title: "Save failed", message: e.message });
     }

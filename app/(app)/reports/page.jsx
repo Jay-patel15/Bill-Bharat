@@ -8,7 +8,6 @@ const REPORTS = [
   { href: "/reports/finance", title: "Finance overview", desc: "Receivables, payables, profit." },
   { href: "/reports/outstanding", title: "Outstanding dues", desc: "What customers owe you and what you owe suppliers." },
   { href: "/reports/ledger", title: "Party ledger", desc: "One customer or supplier: bill amount, paid, balance, running ledger." },
-  { href: "/reports/daybook", title: "Rojmel (Cash Book)", desc: "Money in (Debit) and out (Credit) with running balance." },
   { href: "/reports/audit", title: "Audit log", desc: "System change logs and deletion records." }
 ];
 

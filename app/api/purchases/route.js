@@ -1,6 +1,6 @@
 import { fail, ok, readBody, withUser } from "@/lib/api";
 import { assertCompanyAccess, getCompanyIdFromRequest, findById, findWhere, insert, update, query, transaction } from "@/lib/db";
-import { computeInvoice, gstStateFromGstin } from "@/lib/gst";
+import { computeInvoice, gstStateFromGstin, isGstCompany } from "@/lib/gst";
 import { localDate } from "@/lib/utils";
 import { addPayment, recordPurchaseAccounting, findStockFor } from "@/lib/accounting";
 import { purchaseSchema } from "@/lib/validations";
@@ -31,6 +31,8 @@ export async function POST(req) {
         return fail(parse.error.errors[0]?.message || "Invalid payload", 400);
       }
       const data = parse.data;
+      // Without a GSTIN no GST is claimed on purchases either: every rate is 0.
+      if (!isGstCompany(company)) for (const it of data.items || []) it.gstRate = 0;
 
       const recipientStateCode = company.stateCode || gstStateFromGstin(company.gstNumber);
       const supplierStateCode = gstStateFromGstin(data.supplierGst) || recipientStateCode;

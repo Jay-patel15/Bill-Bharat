@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, FileDown, Plus } from "lucide-react";
+import { FileDown, Plus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
@@ -11,6 +11,7 @@ import { Badge, StatusBadge } from "@/components/ui/badge";
 import { api, useCompany } from "@/components/company-context";
 import { useToast } from "@/components/ui/toast";
 import { formatINR, formatDate, diffDays, STATES, DOCUMENT_TYPES } from "@/lib/utils";
+import { navReplace } from "@/components/back-handler";
 
 export default function CustomerDetailPage({ params }) {
   const router = useRouter();
@@ -18,6 +19,7 @@ export default function CustomerDetailPage({ params }) {
   const { active } = useCompany();
   const [customer, setCustomer] = useState(null);
   const [sales, setSales] = useState([]);
+  const [payments, setPayments] = useState([]);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
@@ -29,9 +31,10 @@ export default function CustomerDetailPage({ params }) {
       setCustomer(c);
       const allSales = await api("/api/sales");
       setSales(allSales.filter((s) => s.customerId === params.id));
+      setPayments(await api(`/api/customers/${params.id}/payments`));
     } catch (e) {
       toast({ type: "error", title: "Could not load", message: e.message });
-      router.replace("/customers");
+      navReplace(router, "/customers");
     }
   }
   useEffect(() => { if (active?.id) load(); }, [params.id, active?.id]);
@@ -55,6 +58,22 @@ export default function CustomerDetailPage({ params }) {
 
   if (!customer) return <div className="text-sm text-muted-foreground">Loading…</div>;
 
+  async function deletePayment(paymentId) {
+    if (!confirm("Delete this payment entry? The invoice's paid amount and ledger will be updated.")) return;
+    try {
+      await api(`/api/payments/${paymentId}`, { method: "DELETE" });
+      toast({ type: "success", title: "Payment entry deleted" });
+      await load();
+    } catch (e) {
+      toast({ type: "error", title: "Failed to delete payment", message: e.message });
+    }
+  }
+
+  // Opens the payment's invoice with this payment loaded in its Record Payment box.
+  function editPayment(p) {
+    router.push(`/sales/${p.refId}?editPayment=${p.id}`);
+  }
+
   async function saveEdits(e) {
     e.preventDefault();
     setSaving(true);
@@ -71,7 +90,6 @@ export default function CustomerDetailPage({ params }) {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <Link href="/customers"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
           <div>
             <h1 className="text-2xl font-semibold">{customer.name}</h1>
             <p className="text-sm text-muted-foreground">{customer.gstNumber || "No GSTIN"} · {customer.phone || customer.email || ""}</p>
@@ -214,6 +232,37 @@ export default function CustomerDetailPage({ params }) {
                     </TR>
                   );
                 })}
+              </TBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>Payments received ({payments.length})</CardTitle></CardHeader>
+        <CardContent>
+          {payments.length === 0 ? (
+            <div className="text-sm text-muted-foreground p-4">No payments received from this customer yet.</div>
+          ) : (
+            <Table>
+              <THead><TR>
+                <TH>Date</TH><TH>Invoice</TH><TH>Method</TH><TH>Notes</TH>
+                <TH className="text-right">Amount</TH><TH />
+              </TR></THead>
+              <TBody>
+                {payments.map((p) => (
+                  <TR key={p.id}>
+                    <TD>{formatDate(p.date)}</TD>
+                    <TD>{p.invoiceNumber}</TD>
+                    <TD>{p.method}</TD>
+                    <TD className="text-muted-foreground">{p.notes}</TD>
+                    <TD className="text-right font-semibold">{formatINR(p.amount)}</TD>
+                    <TD className="text-right">
+                      <Button size="sm" variant="outline" onClick={() => editPayment(p)} className="h-7 text-xs">Edit</Button>
+                      <Button size="sm" variant="outline" onClick={() => deletePayment(p.id)} className="text-rose-600 border-rose-200 hover:bg-rose-50 h-7 text-xs">Delete</Button>
+                    </TD>
+                  </TR>
+                ))}
               </TBody>
             </Table>
           )}

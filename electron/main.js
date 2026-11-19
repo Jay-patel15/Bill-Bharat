@@ -3,7 +3,8 @@
  *
  * Boots the Next.js standalone server on a free loopback port in a child
  * process, then points a BrowserWindow at it. Nothing listens on an external
- * interface and nothing leaves the machine.
+ * interface. The only outbound request is the update check, made when the user
+ * presses Check for updates in Settings.
  *
  * The books live in %APPDATA%\BillBharat\data — a subfolder, kept clear of
  * Electron's own Chromium caches so the whole of it can be copied as a
@@ -14,7 +15,8 @@
  * Override the target with BB_DEV_URL.
  */
 
-const { app, BrowserWindow, Menu, shell, dialog, session, safeStorage } = require("electron");
+const { app, BrowserWindow, Menu, shell, dialog, session, safeStorage, ipcMain } = require("electron");
+const { autoUpdater } = require("electron-updater");
 const { fork } = require("node:child_process");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
@@ -196,7 +198,8 @@ function createWindow() {
       // access to Node from the renderer.
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: true
+      sandbox: true,
+      preload: path.join(__dirname, "preload.js")
     }
   });
 
@@ -225,13 +228,49 @@ function createWindow() {
   mainWindow.loadURL(SPLASH);
 }
 
+/**
+ * Settings → Check for updates. Only runs when the user presses the button; the
+ * installer is downloaded from the GitHub release and the app restarts into it.
+ * The database is untouched: it lives in the user's profile, and the server
+ * backs it up before a new version runs.
+ */
+function registerUpdater() {
+  autoUpdater.autoDownload = false;
+
+  ipcMain.handle("update:check", async () => {
+    if (!app.isPackaged) return { status: "dev", version: app.getVersion() };
+    try {
+      const result = await autoUpdater.checkForUpdates();
+      if (!result?.isUpdateAvailable) return { status: "latest", version: app.getVersion() };
+      return { status: "available", version: result.updateInfo.version };
+    } catch (e) {
+      return { status: "error", message: e.message };
+    }
+  });
+
+  ipcMain.handle("update:install", async () => {
+    try {
+      await autoUpdater.downloadUpdate();
+      // Silent install; quitting first lets the server stop and release the database.
+      setImmediate(() => autoUpdater.quitAndInstall(true, true));
+      return { status: "installing" };
+    } catch (e) {
+      return { status: "error", message: e.message };
+    }
+  });
+}
+
 function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     {
       label: "File",
       submenu: [
         { role: "reload" },
-        { label: "Print…", accelerator: "CmdOrCtrl+P", click: () => mainWindow?.webContents.print() },
+        // A page that handles "app-print" (the sale page prints its invoice) cancels the event; otherwise print the page.
+        { label: "Print…", accelerator: "CmdOrCtrl+P", click: async () => {
+          const handled = await mainWindow?.webContents.executeJavaScript(`!window.dispatchEvent(new Event("app-print", { cancelable: true }))`);
+          if (!handled) mainWindow?.webContents.print();
+        } },
         { type: "separator" },
         {
           label: "Open Data Folder",
@@ -275,7 +314,10 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(async () => {
+    // Windows groups the taskbar button and shortcuts by this id; it keeps the BillBharat icon on them.
+    app.setAppUserModelId("com.billbharat.desktop");
     buildMenu();
+    registerUpdater();
     lockDownNetwork();
     createWindow();
     try {

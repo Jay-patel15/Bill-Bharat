@@ -1,15 +1,29 @@
 "use client";
 import Link from "next/link";
-import { ChevronDown, Plus } from "lucide-react";
+import { useEffect } from "react";
+import { useRouter, usePathname } from "next/navigation";
+import { goBack, recordVisit } from "./back-handler";
+import { ArrowLeft, ChevronDown, Plus } from "lucide-react";
 import { useState } from "react";
 import { useCompany } from "./company-context";
 
 export function Topbar({ user }) {
   const { companies, active, setActive } = useCompany();
   const [open, setOpen] = useState(false);
+  const router = useRouter();
+  const pathname = usePathname();
+  useEffect(() => { recordVisit(window.location.pathname + window.location.search); }, [pathname]);
   return (
     <header className="h-14 border-b bg-background/80 backdrop-blur sticky top-0 z-30 flex items-center justify-between px-5">
       <div className="flex items-center gap-3">
+        <button
+          onClick={() => goBack(router)}
+          title="Back to the previous page"
+          aria-label="Back"
+          className="flex items-center gap-1.5 rounded-md border bg-background px-2.5 py-1.5 text-sm hover:bg-accent"
+        >
+          <ArrowLeft className="h-4 w-4" /> Back
+        </button>
         <div className="relative">
           <button
             onClick={() => setOpen((s) => !s)}

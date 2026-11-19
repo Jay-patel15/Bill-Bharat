@@ -1,8 +1,7 @@
-import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { fail, ok, readBody } from "@/lib/api";
-import { signSession, setSessionCookie } from "@/lib/auth";
+import { signSession, setSessionCookie, recoveryCode } from "@/lib/auth";
 import { insert, query } from "@/lib/db";
 
 const Schema = z.object({
@@ -10,13 +9,6 @@ const Schema = z.object({
   password: z.string().min(6),
   name: z.string().min(1)
 });
-
-/** 16 chars from an alphabet without look-alikes, shown once as XXXX-XXXX-XXXX-XXXX. */
-function recoveryCode() {
-  const abc = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  const raw = [...randomBytes(16)].map((b) => abc[b % abc.length]).join("");
-  return raw.match(/.{4}/g).join("-");
-}
 
 export async function POST(req) {
   try {

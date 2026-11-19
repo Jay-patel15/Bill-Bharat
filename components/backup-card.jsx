@@ -160,7 +160,7 @@ export function ResetCard() {
       <CardHeader className="pb-2"><CardTitle className="text-lg font-bold text-destructive">Reset (erase all books)</CardTitle></CardHeader>
       <CardContent className="space-y-3 text-sm">
         <p className="text-muted-foreground">
-          Deletes every company with its customers, items, invoices, purchases, payments, expenses, logo and uploaded bills.
+          Deletes every company with its customers, items, invoices, purchases, payments, logo and uploaded bills.
           Your login stays. A full backup is saved first, so <b>Restore from file…</b> can bring it all back.
         </p>
         <Button size="sm" variant="outline" className="border-destructive text-destructive" onClick={() => { setPassword(""); setOpen(true); }}>

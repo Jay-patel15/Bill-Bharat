@@ -1,7 +1,8 @@
 import { fail, ok, readBody, withUser } from "@/lib/api";
-import { assertCompanyAccess, getCompanyIdFromRequest, findById, findOne, findWhere, insert, update, transaction, getSetting } from "@/lib/db";
+import { assertCompanyAccess, getCompanyIdFromRequest, findById, findOne, findWhere, insert, transaction, getSetting } from "@/lib/db";
+import { checkConsumables, moveStock } from "@/lib/consumables";
 import { mergeTemplate, templateKey } from "@/lib/invoice-template";
-import { computeInvoice, gstStateFromGstin } from "@/lib/gst";
+import { priceSale, syncSellingRates } from "@/lib/sales";
 import { getDocumentType, nextInvoiceNumber, formatInvoiceNotes, parseInvoiceNotes, localDate } from "@/lib/utils";
 import { recordSaleAccounting, addPayment } from "@/lib/accounting";
 import { saleSchema } from "@/lib/validations";
@@ -38,21 +39,11 @@ export async function POST(req) {
 
 
       const docType = getDocumentType(data.documentType || "Tax Invoice");
-      const supplierStateCode = company.stateCode || gstStateFromGstin(company.gstNumber);
-      const recipientStateCode = customer.stateCode || gstStateFromGstin(customer.gstNumber) || supplierStateCode;
+      const computed = priceSale({ company, customer, docType, items: data.items || [], discount: data.discount || 0 });
 
-      // Compute totals; for non-taxable docs (Delivery Challan), strip the tax.
-      const computed = computeInvoice({
-        items: data.items || [],
-        supplierStateCode,
-        recipientStateCode,
-        invoiceDiscount: data.discount || 0,
-        roundToRupee: docType.taxable
-      });
-      if (!docType.taxable) {
-        for (const it of computed.items) { it.cgst = it.sgst = it.igst = 0; it.total = it.taxable; }
-        computed.cgst = computed.sgst = computed.igst = 0;
-        computed.grandTotal = computed.subtotal;
+      for (const it of computed.items) {
+        if (it.consumablesUsed.length && docType.value !== "Tax Invoice") return fail("Consumables are only recorded on a Tax Invoice", 400);
+        it.consumablesUsed = await checkConsumables(companyId, it.inventoryId, it.consumablesUsed);
       }
 
       const { notes: plainNotes, metadata: existingMeta } = parseInvoiceNotes(data.notes || "");
@@ -94,16 +85,8 @@ export async function POST(req) {
           pdfUrl: ""
         });
 
-        if (docType.affectsStock) {
-          for (const it of computed.items) {
-            if (!it.inventoryId) continue;
-            const inv = await findById("inventory", it.inventoryId);
-            if (inv && inv.companyId === companyId) {
-              // Negative stock is allowed and shown, as in Tally; clamping to 0 loses the shortfall.
-              await update("inventory", inv.id, { quantity: Number(inv.quantity || 0) - Number(it.quantity || 0) }, user.id);
-            }
-          }
-        }
+        if (docType.affectsStock) await moveStock(companyId, computed.items, -1, user.id);
+        if (docType.value === "Tax Invoice") await syncSellingRates(companyId, computed.items, user.id);
 
         if (!docType.affectsOutstanding) return created;
         await recordSaleAccounting(created, customer.name);

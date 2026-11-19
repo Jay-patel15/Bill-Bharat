@@ -1,11 +1,13 @@
 import { forwardRef } from "react";
 import { cn } from "@/lib/utils";
 
-export const Input = forwardRef(function Input({ className, type = "text", ...props }, ref) {
+export const Input = forwardRef(function Input({ className, type = "text", onFocus, ...props }, ref) {
   return (
     <input
       ref={ref}
       type={type}
+      // Select the number on focus so typing replaces a 0 instead of appending to it.
+      onFocus={(e) => { if (type === "number") e.target.select(); onFocus?.(e); }}
       className={cn(
         "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50",

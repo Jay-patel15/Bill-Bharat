@@ -4,7 +4,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
-import { computeInvoice, gstStateFromGstin, GST_SLABS, GST_UNITS } from "@/lib/gst";
+import { computeInvoice, gstStateFromGstin, GST_SLABS, GST_UNITS, isGstCompany } from "@/lib/gst";
 import { formatINR, localDate } from "@/lib/utils";
 import { useCompany, api } from "./company-context";
 import { ItemSearch } from "./item-search";
@@ -17,6 +17,10 @@ const blankItem = () => ({
 
 export function PurchaseForm({ initial = {}, onSubmit, submitLabel = "Save purchase" }) {
   const { active } = useCompany();
+  const gstOn = isGstCompany(active);
+  const gridCols = gstOn
+    ? "grid [&>*]:min-w-0 grid-cols-[2fr_0.8fr_0.6fr_0.5fr_0.6fr_0.9fr_0.6fr_0.6fr_1fr_2.4rem]"
+    : "grid [&>*]:min-w-0 grid-cols-[2fr_0.8fr_0.6fr_0.5fr_0.6fr_0.9fr_0.6fr_1fr_2.4rem]";
   const [supplierName, setSupplierName] = useState(initial.supplierName || "");
   const [supplierGst, setSupplierGst] = useState(initial.supplierGst || "");
   const [billNumber, setBillNumber] = useState(initial.billNumber || "");
@@ -50,10 +54,11 @@ export function PurchaseForm({ initial = {}, onSubmit, submitLabel = "Save purch
 
   const supplierStateCode = gstStateFromGstin(supplierGst);
   const recipientStateCode = active?.stateCode || gstStateFromGstin(active?.gstNumber);
+  // Without a GSTIN no GST is claimed: every line is priced at 0%, the same rule the server applies.
   const computed = useMemo(() => computeInvoice({
-    items: items.map((i) => ({ ...i, sellingPrice: Number(i.purchasePrice) || 0 })),
+    items: items.map((i) => ({ ...i, sellingPrice: Number(i.purchasePrice) || 0, gstRate: gstOn ? i.gstRate : 0 })),
     supplierStateCode, recipientStateCode
-  }), [items, supplierStateCode, recipientStateCode]);
+  }), [items, supplierStateCode, recipientStateCode, gstOn]);
 
   function setItem(i, patch) {
     setItems((arr) => arr.map((it, idx) => idx === i ? { ...it, ...patch } : it));
@@ -105,11 +110,11 @@ export function PurchaseForm({ initial = {}, onSubmit, submitLabel = "Save purch
               <option key={u} value={u} />
             ))}
           </datalist>
-          <div className="grid [&>*]:min-w-0 grid-cols-[2fr_0.8fr_0.6fr_0.5fr_0.6fr_0.9fr_0.6fr_0.6fr_1fr_2.4rem] gap-2 text-xs text-muted-foreground px-2">
-            <div>Item</div><div>HSN</div><div>SKU</div><div>Qty</div><div>Unit</div><div>Buy</div><div>GST%</div><div>Disc</div><div className="text-right">Total</div><div />
+          <div className={`${gridCols} gap-2 text-xs text-muted-foreground px-2`}>
+            <div>Item</div><div>HSN</div><div>SKU</div><div>Qty</div><div>Unit</div><div>Buy</div>{gstOn && <div>GST%</div>}<div>Disc</div><div className="text-right">Total</div><div />
           </div>
           {items.map((it, i) => (
-            <div key={i} data-grid-row className="grid [&>*]:min-w-0 grid-cols-[2fr_0.8fr_0.6fr_0.5fr_0.6fr_0.9fr_0.6fr_0.6fr_1fr_2.4rem] gap-2 items-start">
+            <div key={i} data-grid-row className={`${gridCols} gap-2 items-start`}>
               <ItemSearch
                 value={it.name}
                 items={inventory}
@@ -129,9 +134,11 @@ export function PurchaseForm({ initial = {}, onSubmit, submitLabel = "Save purch
                 onChange={(e) => setItem(i, { unit: e.target.value.toUpperCase() })}
               />
               <Input type="number" min={0} step="0.01" value={it.purchasePrice} onChange={(e) => setItem(i, { purchasePrice: Number(e.target.value) })} />
-              <Select value={it.gstRate} onChange={(e) => setItem(i, { gstRate: Number(e.target.value) })}>
-                {GST_SLABS.map((r) => <option key={r} value={r}>{r}%</option>)}
-              </Select>
+              {gstOn && (
+                <Select value={it.gstRate} onChange={(e) => setItem(i, { gstRate: Number(e.target.value) })}>
+                  {GST_SLABS.map((r) => <option key={r} value={r}>{r}%</option>)}
+                </Select>
+              )}
               <Input type="number" min={0} step="0.01" value={it.discount} onChange={(e) => setItem(i, { discount: Number(e.target.value) })} />
               <div className="text-right pt-2 text-sm">{formatINR(computed.items[i]?.total || 0)}</div>
               <Button variant="ghost" size="icon" onClick={() => setItems((a) => a.filter((_, idx) => idx !== i))}>
@@ -157,9 +164,9 @@ export function PurchaseForm({ initial = {}, onSubmit, submitLabel = "Save purch
           <CardHeader><CardTitle>Totals</CardTitle></CardHeader>
           <CardContent className="space-y-2 text-sm">
             <Row label="Subtotal" value={formatINR(computed.subtotal)} />
-            {computed.interstate
+            {gstOn && (computed.interstate
               ? <Row label="IGST" value={formatINR(computed.igst)} />
-              : (<><Row label="CGST" value={formatINR(computed.cgst)} /><Row label="SGST" value={formatINR(computed.sgst)} /></>)}
+              : (<><Row label="CGST" value={formatINR(computed.cgst)} /><Row label="SGST" value={formatINR(computed.sgst)} /></>))}
             <div className="border-t pt-2">
               <Row label={<strong>Grand Total</strong>} value={<strong>{formatINR(computed.grandTotal)}</strong>} />
             </div>

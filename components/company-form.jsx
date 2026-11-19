@@ -4,8 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { STATES } from "@/lib/utils";
 import { uploadLogo } from "./logo-upload";
+import { useToast } from "@/components/ui/toast";
 
 export function CompanyForm({ initial = {}, submitLabel = "Save", onSubmit }) {
+  const toast = useToast();
   const [form, setForm] = useState({
     name: "", logoUrl: "", address: "", city: "", state: "", stateCode: "",
     pincode: "", gstNumber: "", panNumber: "", bankAccountNo: "", bankIfsc: "",
@@ -25,7 +27,7 @@ export function CompanyForm({ initial = {}, submitLabel = "Save", onSubmit }) {
   async function handleLogo(file) {
     if (!file) return;
     try { set("logoUrl", await uploadLogo(file)); }
-    catch (e) { alert(e.message); }
+    catch (e) { toast({ type: "error", title: "Save failed", message: e.message }); }
   }
 
   return (
@@ -33,7 +35,7 @@ export function CompanyForm({ initial = {}, submitLabel = "Save", onSubmit }) {
       <Field label="Company name *">
         <Input required value={form.name} onChange={(e) => set("name", e.target.value)} />
       </Field>
-      <Field label="GSTIN">
+      <Field label="GSTIN" hint="Leave blank if you are not GST-registered: bills then carry no GST. Add it to turn GST on.">
         <Input value={form.gstNumber} onChange={(e) => {
           set("gstNumber", e.target.value.toUpperCase());
           if (e.target.value.length >= 2) set("stateCode", e.target.value.substring(0, 2));

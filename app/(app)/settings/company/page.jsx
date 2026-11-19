@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CompanyForm } from "@/components/company-form";
@@ -37,7 +36,6 @@ export default function CompanyDetailsPage() {
   return (
     <div className="space-y-3 max-w-4xl">
       <div className="flex items-center gap-2">
-        <Link href="/settings"><Button variant="ghost" size="icon" aria-label="Back to settings"><ArrowLeft className="h-4 w-4" /></Button></Link>
         <div>
           <h1 className="text-xl font-semibold">Company details</h1>
           <p className="text-xs text-muted-foreground">Name, GSTIN, PAN, address, contacts, logo, bank and terms printed on invoices.</p>

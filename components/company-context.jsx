@@ -55,7 +55,7 @@ export function useCompany() {
  */
 const COMPANY_SCOPED = [
   "/api/customers", "/api/inventory", "/api/sales", "/api/purchases", "/api/reports",
-  "/api/product-mappings", "/api/vouchers", "/api/expenses", "/api/payments"
+  "/api/product-mappings", "/api/payments"
 ];
 
 /** Adds the X-Company-Id header automatically. */

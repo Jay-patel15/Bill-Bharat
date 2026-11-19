@@ -1,7 +1,8 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { Plus, Sparkles, CreditCard, CheckCircle2, FileText, Trash2, ArrowLeft, Building2, FileClock, CheckCheck } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { setInnerBack } from "@/components/back-handler";
+import { Plus, Sparkles, CreditCard, CheckCircle2, FileText, Trash2, Building2, FileClock, CheckCheck } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,9 +11,12 @@ import { StatusBadge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
 import { api, useCompany } from "@/components/company-context";
 import { formatDate, formatINR } from "@/lib/utils";
+import { isGstCompany } from "@/lib/gst";
 import { NoCompanySelected } from "@/components/empty-state";
+import { useToast } from "@/components/ui/toast";
 
 export default function PurchasesPage() {
+  const toast = useToast();
   const { active } = useCompany();
   const [list, setList] = useState([]);
   const [customers, setCustomers] = useState([]);
@@ -22,13 +26,19 @@ export default function PurchasesPage() {
   
   // State for the "Personal Dashboard" View
   const [selectedSupplierName, setSelectedSupplierName] = useState(null);
+  const payInput = useRef(null);
+  useEffect(() => {
+    if (!selectedSupplierName) return;
+    return setInnerBack(() => setSelectedSupplierName(null));
+  }, [selectedSupplierName]);
   
   // State for the specific bill Payment Modal
   const [selectedBill, setSelectedBill] = useState(null);
   const [payAmount, setPayAmount] = useState("");
   const [payMethod, setPayMethod] = useState("Cash");
   const [payRef, setPayRef] = useState("");
-  const [editMode, setEditMode] = useState(false);
+  const [payNotes, setPayNotes] = useState("");
+  const [editingPaymentId, setEditingPaymentId] = useState(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -77,7 +87,8 @@ export default function PurchasesPage() {
     setPayAmount("");
     setPayMethod("Cash");
     setPayRef("");
-    setEditMode(false);
+    setPayNotes("");
+    setEditingPaymentId(null);
     // Fetch full detail with payments
     try {
       const full = await api(`/api/purchases/${p.id}`);
@@ -85,21 +96,45 @@ export default function PurchasesPage() {
     } catch {}
   }
 
-  async function handlePayment(closeBill = false) {
+  async function handlePayment(closeBill = false, acceptExcess = false) {
     if (!selectedBill) return;
+    if (!closeBill && !(Number(payAmount) > 0)) {
+      toast({ type: "error", title: "Invalid amount", message: "Please enter a valid payment amount." });
+      return;
+    }
     const inputAmount = Number(payAmount) || 0;
     const newTotal    = Number(selectedBill.total || 0);
 
-    const newPaid = closeBill
-      ? newTotal
-      : editMode
-        ? inputAmount
-        : Number(selectedBill.amountPaid || 0) + inputAmount;
-
-    if (newPaid > newTotal && !closeBill) {
-      alert(`Amount paid (${formatINR(newPaid)}) cannot exceed bill total (${formatINR(newTotal)}).`);
+    if (editingPay) {
+      if (payOver > 0 && !acceptExcess) return;
+      setSaving(true);
+      try {
+        await api(`/api/payments/${editingPay.id}`, {
+          method: "PUT",
+          body: JSON.stringify({
+            amount: editingPay.amount < 0 ? -inputAmount : inputAmount,
+            method: payMethod,
+            notes: payNotes
+          })
+        });
+        const full = await api(`/api/purchases/${selectedBill.id}`);
+        setList((prev) => prev.map((p) => (p.id === full.id ? full : p)));
+        setSelectedBill(full);
+        setEditingPaymentId(null);
+        setPayAmount("");
+        setPayRef("");
+        setPayNotes("");
+        toast({ type: "success", title: "Payment updated" });
+      } catch (e) {
+        toast({ type: "error", title: "Failed to update payment", message: e.message });
+      } finally { setSaving(false); }
       return;
     }
+
+    const newPaid = closeBill ? newTotal : Number(selectedBill.amountPaid || 0) + inputAmount;
+
+    // A payment above what is pending waits for the user's choice (Re-edit or Ignore).
+    if (newPaid > newTotal && !closeBill && !acceptExcess) return;
 
     const newStatus = closeBill
       ? "Paid"
@@ -117,18 +152,15 @@ export default function PurchasesPage() {
           amountPaid: newPaid, 
           status: newStatus,
           paymentMethod: payMethod,
-          paymentNotes: editMode 
-            ? `Correction to ${formatINR(newPaid)}` 
-            : `Payment of ${formatINR(inputAmount)}${payRef.trim() ? ` | Ref: ${payRef.trim()}` : ""}`
+          paymentNotes: `Payment of ${formatINR(inputAmount)}${payRef.trim() ? ` | Ref: ${payRef.trim()}` : ""}`
         })
       });
       setList((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
       setSelectedBill(updated);
       setPayAmount("");
       setPayRef("");
-      setEditMode(false);
     } catch (e) {
-      alert(e.message || "Failed to save payment");
+      toast({ type: "error", title: "Payment failed", message: e.message || "Failed to save payment" });
     } finally {
       setSaving(false);
     }
@@ -144,13 +176,41 @@ export default function PurchasesPage() {
       setList((prev) => prev.filter((p) => p.id !== selectedBill.id));
       setSelectedBill(null);
     } catch (e) {
-      alert(e.message || "Failed to delete purchase");
+      toast({ type: "error", title: "Delete failed", message: e.message || "Failed to delete purchase" });
     } finally {
       setSaving(false);
     }
   }
 
+  // Deletes one payment row; the server recomputes the bill's paid amount and its ledger lines.
+  async function deleteSupplierPayment(paymentId) {
+    if (!confirm("Delete this payment entry? The bill's paid amount and ledger will be updated.")) return;
+    try {
+      await api(`/api/payments/${paymentId}`, { method: "DELETE" });
+      const full = await api(`/api/purchases/${selectedBill.id}`);
+      setList((prev) => prev.map((p) => (p.id === full.id ? full : p)));
+      setSelectedBill(full);
+      toast({ type: "success", title: "Payment entry deleted" });
+    } catch (e) {
+      toast({ type: "error", title: "Failed to delete payment", message: e.message });
+    }
+  }
+
+  // Loads a payment into the Record Payment box; handlePayment saves the change.
+  function editSupplierPayment(pay) {
+    setEditingPaymentId(pay.id);
+    setPayAmount(String(Math.abs(Number(pay.amount))));
+    setPayMethod(pay.method || "Cash");
+    setPayRef("");
+    setPayNotes(pay.notes || "");
+    payInput.current?.focus();
+  }
+
   const pendingAmount = selectedBill ? Math.max(0, Number(selectedBill.total || 0) - Number(selectedBill.amountPaid || 0)) : 0;
+  // While editing a payment, the room left is the total minus every other payment.
+  const editingPay = selectedBill?.payments?.find((x) => x.id === editingPaymentId);
+  const availableAmount = editingPay ? Math.max(0, Number(selectedBill.total || 0) - (Number(selectedBill.amountPaid || 0) - Number(editingPay.amount))) : pendingAmount;
+  const payOver = selectedBill && Number(payAmount) > availableAmount ? Math.round((Number(payAmount) - availableAmount) * 100) / 100 : 0;
   const isClosed = pendingAmount <= 0 && Number(selectedBill?.amountPaid || 0) > 0;
 
   // Define Payment Modal helper so we can reuse it
@@ -196,7 +256,7 @@ export default function PurchasesPage() {
                     <th className="text-left p-2 font-medium">Item</th>
                     <th className="text-right p-2 font-medium">Qty</th>
                     <th className="text-right p-2 font-medium">Rate</th>
-                    <th className="text-right p-2 font-medium">GST%</th>
+                    {isGstCompany(active) && <th className="text-right p-2 font-medium">GST%</th>}
                     <th className="text-right p-2 font-medium">Total</th>
                   </tr>
                 </thead>
@@ -206,7 +266,7 @@ export default function PurchasesPage() {
                       <td className="p-2">{it.name}</td>
                       <td className="p-2 text-right">{it.quantity} {it.unit}</td>
                       <td className="p-2 text-right">{formatINR(it.purchasePrice)}</td>
-                      <td className="p-2 text-right">{it.gstRate}%</td>
+                      {isGstCompany(active) && <td className="p-2 text-right">{it.gstRate}%</td>}
                       <td className="p-2 text-right font-medium">{formatINR(it.total)}</td>
                     </tr>
                   ))}
@@ -231,45 +291,28 @@ export default function PurchasesPage() {
             </div>
 
             {/* Status + payment form */}
-            {!isClosed || editMode ? (
+            {!isClosed || editingPay ? (
               <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold flex items-center gap-2">
-                    <CreditCard className="h-4 w-4" />
-                    {editMode ? "Edit Total Paid Amount" : "Record Payment to Supplier"}
-                  </p>
-                  {!editMode ? (
-                    <button
-                      className="text-xs text-blue-600 underline hover:text-blue-800"
-                      onClick={() => { setEditMode(true); setPayAmount(String(selectedBill.amountPaid || "")); }}
-                    >
-                      ✏️ Edit paid amount
-                    </button>
-                  ) : (
-                    <button
-                      className="text-xs text-muted-foreground underline"
-                      onClick={() => { setEditMode(false); setPayAmount(""); }}
-                    >
-                      Cancel edit
-                    </button>
-                  )}
-                </div>
+                <p className="text-sm font-semibold flex items-center gap-2">
+                  <CreditCard className="h-4 w-4" />
+                  {editingPay ? "Edit Payment" : "Record Payment to Supplier"}
+                </p>
 
-                {editMode && (
-                  <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded p-2">
-                    ⚠️ Edit mode: This will <strong>replace</strong> the current paid amount (not add to it). Use this to correct a wrong entry.
-                  </p>
+                {editingPay && (
+                  <div className="text-xs text-blue-800 bg-blue-50 border border-blue-200 rounded p-2 flex items-center justify-between gap-2">
+                    <span>Editing a payment of {formatINR(Math.abs(editingPay.amount))} ({editingPay.method || "Cash"}). Change the amount or method, then save.</span>
+                    <button className="underline whitespace-nowrap" onClick={() => { setEditingPaymentId(null); setPayAmount(""); setPayRef(""); setPayNotes(""); }}>Cancel edit</button>
+                  </div>
                 )}
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs text-muted-foreground mb-1 block">
-                      {editMode ? "Correct Total Paid Amount (₹)" : "Amount Paying Now (₹)"}
-                    </label>
+                    <label className="text-xs text-muted-foreground mb-1 block">Amount Paying Now (₹)</label>
                     <Input
+                      ref={payInput}
                       type="number"
                       min="0"
-                      placeholder={editMode ? `Currently ${formatINR(selectedBill.amountPaid || 0)}` : `Max ${formatINR(pendingAmount)}`}
+                      placeholder={`Max ${formatINR(pendingAmount)}`}
                       value={payAmount}
                       onChange={(e) => setPayAmount(e.target.value)}
                     />
@@ -286,7 +329,7 @@ export default function PurchasesPage() {
                       ))}
                     </select>
                   </div>
-                  {payMethod !== "Cash" && payMethod !== "Bank Transfer" && (
+                  {!editingPay && payMethod !== "Cash" && payMethod !== "Bank Transfer" && (
                     <div className="col-span-2">
                       <label className="text-xs text-muted-foreground mb-1 block">
                         {payMethod === "Cheque" ? "Cheque Number" :
@@ -304,35 +347,43 @@ export default function PurchasesPage() {
                       />
                     </div>
                   )}
+                  {editingPay && (
+                    <div className="col-span-2">
+                      <label className="text-xs text-muted-foreground mb-1 block">Notes</label>
+                      <Input value={payNotes} onChange={(e) => setPayNotes(e.target.value)} />
+                    </div>
+                  )}
                 </div>
+                {payOver > 0 && (
+                  <div className="text-sm text-amber-800 bg-amber-50 border border-amber-300 rounded p-3 space-y-2">
+                    <div>
+                      ⚠️ <strong>{formatINR(payAmount)}</strong> is more than the pending <strong>{formatINR(pendingAmount)}</strong>:
+                      {" "}<strong>{formatINR(payOver)}</strong> extra. Re-edit the amount, or ignore and record it as it is.
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button size="sm" variant="outline" onClick={() => { payInput.current?.focus(); payInput.current?.select(); }}>Re-edit amount</Button>
+                      <Button size="sm" variant="outline" onClick={() => handlePayment(false, true)} disabled={saving}>Ignore and record anyway</Button>
+                    </div>
+                  </div>
+                )}
                 <div className="flex gap-2 pt-1">
-                  {editMode ? (
+                  <Button
+                    onClick={() => handlePayment(false)}
+                    disabled={saving || payOver > 0}
+                    className="flex-1"
+                  >
+                    {saving ? "Saving…" : editingPay ? "Save Payment Changes" : "Record Payment"}
+                  </Button>
+                  {!editingPay && (
                     <Button
-                      onClick={() => handlePayment(false)}
-                      disabled={saving || !payAmount}
-                      className="flex-1"
+                      variant="outline"
+                      onClick={() => handlePayment(true)}
+                      disabled={saving}
+                      className="border-emerald-500 text-emerald-600 hover:bg-emerald-50"
                     >
-                      {saving ? "Saving…" : "Save Corrected Amount"}
+                      <CheckCircle2 className="h-4 w-4 mr-1" />
+                      Close Bill
                     </Button>
-                  ) : (
-                    <>
-                      <Button
-                        onClick={() => handlePayment(false)}
-                        disabled={saving || !payAmount}
-                        className="flex-1"
-                      >
-                        {saving ? "Saving…" : "Record Payment"}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => handlePayment(true)}
-                        disabled={saving}
-                        className="border-emerald-500 text-emerald-600 hover:bg-emerald-50"
-                      >
-                        <CheckCircle2 className="h-4 w-4 mr-1" />
-                        Close Bill
-                      </Button>
-                    </>
                   )}
                 </div>
               </div>
@@ -342,12 +393,6 @@ export default function PurchasesPage() {
                   <CheckCircle2 className="h-5 w-5" />
                   <span className="font-medium">This bill is fully paid and closed.</span>
                 </div>
-                <button
-                  className="text-xs text-blue-600 underline hover:text-blue-800"
-                  onClick={() => { setEditMode(true); setPayAmount(String(selectedBill.amountPaid || "")); }}
-                >
-                  ✏️ Edit paid amount
-                </button>
               </div>
             )}
 
@@ -362,6 +407,7 @@ export default function PurchasesPage() {
                       <th className="text-left p-2 font-medium">Method</th>
                       <th className="text-right p-2 font-medium">Amount</th>
                       <th className="text-left p-2 font-medium">Notes</th>
+                      <th className="p-2" />
                     </tr>
                   </thead>
                   <tbody>
@@ -373,6 +419,10 @@ export default function PurchasesPage() {
                           {pay.amount > 0 ? "-" : "+"}{formatINR(Math.abs(pay.amount))}
                         </td>
                         <td className="p-2 text-muted-foreground truncate max-w-[200px]" title={pay.notes}>{pay.notes}</td>
+                        <td className="p-2 text-right">
+                          <Button size="sm" variant="outline" onClick={() => editSupplierPayment(pay)} className="h-7 text-xs">Edit</Button>
+                          <Button size="sm" variant="outline" onClick={() => deleteSupplierPayment(pay.id)} className="text-rose-600 border-rose-200 hover:bg-rose-50 h-7 text-xs">Delete</Button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -395,7 +445,7 @@ export default function PurchasesPage() {
       });
       setList((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
     } catch (e) {
-      alert(e.message || "Failed to approve draft");
+      toast({ type: "error", title: "Approve failed", message: e.message || "Failed to approve draft" });
     } finally {
       setApprovingDraft(null);
     }
@@ -414,9 +464,6 @@ export default function PurchasesPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => setSelectedSupplierName(null)} className="h-8 w-8 rounded-full bg-muted/50 hover:bg-muted shrink-0">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
             <div>
               <h1 className="text-2xl font-semibold">{supplierData.name}</h1>
               <p className="text-sm text-muted-foreground">{supplierData.gst ? `GSTIN: ${supplierData.gst}` : "No GSTIN provided"}</p>
@@ -478,7 +525,7 @@ export default function PurchasesPage() {
                     <TH className="text-right text-emerald-600">Paid</TH>
                     <TH className="text-right text-red-600">Pending</TH>
                     <TH>Status</TH>
-                    <TH className="text-right">Action</TH>
+                    <TH className="text-center">Action</TH>
                   </TR>
                 </THead>
                 <TBody>
@@ -498,8 +545,8 @@ export default function PurchasesPage() {
                           {formatINR(pendingAmt)}
                         </TD>
                         <TD><StatusBadge status={p.status} /></TD>
-                        <TD className="text-right">
-                          <Button size="xs" variant="outline" className="h-7 text-xs border-emerald-500 text-emerald-600 hover:bg-emerald-50" onClick={(e) => { e.stopPropagation(); openDetail(p); }}>
+                        <TD className="text-center">
+                          <Button size="xs" variant="outline" className="border-emerald-500 text-emerald-600 hover:bg-emerald-50" onClick={(e) => { e.stopPropagation(); openDetail(p); }}>
                             <CreditCard className="h-3 w-3 mr-1" /> Pay Bill
                           </Button>
                         </TD>
@@ -717,7 +764,7 @@ export default function PurchasesPage() {
                       onClick={async () => {
                         if (!confirm(`Delete draft "${draft.billNumber || 'No Number'}"?`)) return;
                         try { await api(`/api/purchases/${draft.id}`, { method: "DELETE" }); setList(prev => prev.filter(p => p.id !== draft.id)); }
-                        catch (e) { alert(e.message); }
+                        catch (e) { toast({ type: "error", title: "Delete failed", message: e.message }); }
                       }}>
                       <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete
                     </Button>
