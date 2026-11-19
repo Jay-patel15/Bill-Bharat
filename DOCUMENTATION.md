@@ -75,6 +75,16 @@ Reports → Party ledger. Choose the party, then the bills to include: *All*, or
 - **Old correction rows:** before this version, changing a bill's paid amount wrote a negative *Correction* row. Those rows still show as *Correction* in the party ledger. Nothing writes new correction rows now.
 - If the payment being edited is deleted, or disappears after a refresh, edit mode is cancelled with a message. The save never falls back to recording a new payment.
 
+### Stock and the low-stock warning
+
+- Each sale takes stock out, each purchase puts stock in, and deleting or editing a sale or purchase reverses its stock. Electrical Works parts count as stock used (see *Electrical Works and consumables*).
+- **Low-stock warning:** each item has a **Low stock threshold** (Inventory → the item → *Low stock threshold*). The warning shows when stock is **at or below** the threshold **and** the threshold is above 0.
+  - Equal counts as low: threshold 5, stock 5 → low.
+  - Threshold 0 (the default) turns the warning off for that item.
+  - Negative stock with a threshold above 0 also counts as low.
+- The warning appears in the **Low stock** card on the dashboard (up to 10 items) and as the low-stock flag on the inventory list. It is worked out when those screens load, not when you save.
+- The stock report (Excel) shows *LOW STOCK*, or *NEGATIVE STOCK* for negative quantities, in its status column.
+
 ### Back button and number fields
 
 - **Back** (top bar) returns to the page you opened from. The app remembers the pages you visit in this session. A page you replaced after saving (for example the invoice form after *Save*) is not kept, so Back does not return to it. On a supplier's bills, Back first closes the bills and returns to the supplier list. With nothing to go back to it opens the dashboard. `Esc` does the same when no dialog is open.

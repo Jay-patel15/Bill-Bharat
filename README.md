@@ -16,7 +16,7 @@ Full guide (using the app, settings, data, how it works, troubleshooting): **[DO
 | **Industrial invoice print** | The standard bordered A4 GST bill: logo, company name and tagline, GSTIN/PAN/state, Rule 46 notice, Original/Duplicate/Triplicate, challan/order/LR/transporter/e-way/payment details, buyer and consignee, ruled item grid with taxes, bank details, declaration, numbered terms, signatures. Long bills continue onto page 2 by themselves. |
 | **Invoice template editor** | Turn any part of the invoice on or off and rename it, with a live A4 preview. Set your own invoice number format (e.g. `INV/{FY}/{###}`). |
 | **Company settings** | Edit company name, GSTIN, PAN, address, contacts, logo, bank details and terms & conditions from Settings. |
-| **Inventory** | Items with SKU, barcode, HSN, GST rate, unit and stock; sales take stock out, purchases put it in. Negative stock is shown in red. |
+| **Inventory** | Items with SKU, barcode, HSN, GST rate, unit and stock; sales take stock out, purchases put it in. Negative stock is shown in red. A per-item low-stock threshold shows a warning on the dashboard when stock falls to or below it (0 = off). |
 | **Electrical Works** | Bill a lump sum for electrical work while the cable, pipe and breakers used come out of stock (not printed on the invoice). |
 | **Edit and send invoices** | Edit unpaid invoices (stock and ledger follow automatically). Send the PDF by WhatsApp or email with a ready message. Payments above the amount pending need a choice: re-edit or ignore. |
 | **Purchases** | Supplier bills typed in, or read from a PDF/photo by AI (optional). |

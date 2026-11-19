@@ -93,6 +93,7 @@ Parts can be added only on a Tax Invoice.
 
 - Each sale takes stock out. Each purchase puts stock in.
 - A red **Negative** label means you have billed more than your recorded stock. Check your purchases and stock count, then correct the item.
+- **Low stock warning:** set a **Low stock threshold** on an item in Inventory (a number above 0). When its stock is at or below that number, the item appears in the **Low stock** card on the dashboard. The default is 0, which turns the warning off for that item.
 - **Stock Report** downloads the list to Excel.
 
 ---
