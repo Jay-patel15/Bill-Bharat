@@ -47,8 +47,10 @@ export default function LedgerPage() {
 
   if (!active) return <NoCompanySelected />;
   const supplier = party === "suppliers";
-  const pdfHref = st && `/api/reports/ledger/pdf?${new URLSearchParams({ party, key, from: st.from, to: st.to, ids: st.ids.join(","), companyId: active.id })}`;
   const chosen = new Set(st?.ids || []);
+  const pdfHref = (layout) => st && `/api/reports/ledger/pdf?${new URLSearchParams({ party, key, from: st.from, to: st.to, ids: st.ids.join(","), companyId: active.id, layout })}`;
+  // More than one bill in the statement (all of them, or several ticked): ask which ledger to download.
+  const choice = st && st.invoices.length > 1 && (chosen.size === 0 || chosen.size > 1);
   const toggle = (id) => {
     const next = new Set(chosen);
     next.has(id) ? next.delete(id) : next.add(id);
@@ -79,7 +81,13 @@ export default function LedgerPage() {
         <label className="text-xs">From<Input type="date" value={range.from} onChange={(e) => setRange({ ...range, from: e.target.value })} /></label>
         <label className="text-xs">To<Input type="date" value={range.to} onChange={(e) => setRange({ ...range, to: e.target.value })} /></label>
         <Button variant="outline" onClick={() => go({})}>Show</Button>
-        {pdfHref && <a href={pdfHref} target="_blank" rel="noreferrer"><Button className="gap-1.5"><FileDown className="h-4 w-4" />PDF</Button></a>}
+        {pdfHref && !choice && <a href={pdfHref("combined")} target="_blank" rel="noreferrer"><Button className="gap-1.5"><FileDown className="h-4 w-4" />PDF</Button></a>}
+        {pdfHref && choice && (
+          <>
+            <a href={pdfHref("combined")} target="_blank" rel="noreferrer"><Button className="gap-1.5"><FileDown className="h-4 w-4" />PDF: combined table</Button></a>
+            <a href={pdfHref("bills")} target="_blank" rel="noreferrer"><Button variant="outline" className="gap-1.5"><FileDown className="h-4 w-4" />PDF: table per bill</Button></a>
+          </>
+        )}
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
@@ -112,6 +120,12 @@ export default function LedgerPage() {
             ))}
           </div>
 
+            {choice && (
+              <p className="text-xs text-muted-foreground">
+                Downloading several {supplier ? "bills" : "invoices"}: <strong>combined table</strong> gives one table with every line in date order.
+                {" "}<strong>Table per bill</strong> gives one PDF with a heading and its own table for each {supplier ? "bill" : "invoice"}.
+              </p>
+            )}
             <Table>
               <THead><TR>
                 <TH className="w-28">Date</TH><TH>Particulars</TH><TH>Ref. no.</TH>

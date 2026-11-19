@@ -6,7 +6,7 @@ import { Plus, Sparkles, CreditCard, FileText, Trash2, Building2, FileClock, Che
 import { PaymentSection } from "@/components/payment-section";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input, Select } from "@/components/ui/input";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { StatusBadge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
@@ -27,6 +27,8 @@ export default function PurchasesPage() {
   
   // State for the "Personal Dashboard" View
   const [selectedSupplierName, setSelectedSupplierName] = useState(null);
+  // Which bill the supplier summary shows: "all" (combined) or a bill id.
+  const [billFilter, setBillFilter] = useState("all");
 
   const [selectedBill, setSelectedBill] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -217,8 +219,11 @@ export default function PurchasesPage() {
     const supplierData = suppliersMap.get(selectedSupplierName);
     const supplierPurchases = supplierData ? supplierData.purchases : [];
     
-    const sBilled = supplierPurchases.reduce((s, p) => s + Number(p.total || 0), 0);
-    const sPaid = supplierPurchases.reduce((s, p) => s + Number(p.amountPaid || 0), 0);
+    // The summary shows every bill combined, or only the bill picked in the selector.
+    const filterBill = supplierPurchases.find((p) => p.id === billFilter) || null;
+    const shownBills = filterBill ? [filterBill] : supplierPurchases;
+    const sBilled = shownBills.reduce((s, p) => s + Number(p.total || 0), 0);
+    const sPaid = shownBills.reduce((s, p) => s + Number(p.amountPaid || 0), 0);
     const sPending = sBilled - sPaid;
 
     return (
@@ -231,19 +236,24 @@ export default function PurchasesPage() {
             </div>
           </div>
           {supplierPurchases.length > 0 && (
-            <Button 
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm"
-              onClick={() => {
-                const pendingBill = supplierPurchases.find(p => Math.max(0, Number(p.total || 0) - Number(p.amountPaid || 0)) > 0) || supplierPurchases[0];
-                if (pendingBill) openDetail(pendingBill);
-              }}
-            >
-              <CreditCard className="h-4 w-4 mr-1.5" /> Record Payment / Pay Bill
-            </Button>
+            <label className="flex items-center gap-2 text-sm">
+              <span className="text-muted-foreground">Show</span>
+              <Select className="min-w-[280px]" value={filterBill ? filterBill.id : "all"} onChange={(e) => setBillFilter(e.target.value)}>
+                <option value="all">All bills combined ({supplierPurchases.length})</option>
+                {supplierPurchases.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.billNumber || "No number"} · {formatDate(p.billDate)} · {formatINR(p.total)}
+                  </option>
+                ))}
+              </Select>
+            </label>
           )}
         </div>
 
         {/* Supplier Specific Summary */}
+        <p className="text-xs text-muted-foreground">
+          {filterBill ? `Figures for bill ${filterBill.billNumber || "(no number)"} only.` : `Figures for all ${supplierPurchases.length} bills combined.`}
+        </p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card className="bg-blue-50 border-blue-200">
             <CardContent className="p-4">
@@ -295,7 +305,7 @@ export default function PurchasesPage() {
                     return (
                       <TR
                         key={p.id}
-                        className="cursor-pointer hover:bg-muted/50 transition-colors"
+                        className={`cursor-pointer hover:bg-muted/50 transition-colors ${filterBill?.id === p.id ? "bg-primary/10" : ""}`}
                         onClick={() => openDetail(p)}
                       >
                         <TD className="font-mono text-xs font-semibold">{p.billNumber || "—"}</TD>

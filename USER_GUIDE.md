@@ -14,7 +14,7 @@ BillBharat is a billing app for your business. It makes GST invoices, keeps your
 - **Purchases:** record supplier bills by hand, or let the AI reader fill one in from a photo or PDF (optional).
 - **Payments:** part or full payments on invoices and bills. The status updates by itself.
 - **Edit an unpaid invoice** and **send an invoice** by WhatsApp or email.
-- **Reports:** Sales, GST, outstanding dues, party ledger, audit log, Excel stock report.
+- **Reports:** Sales, GST, outstanding dues, party ledger (with a PDF per bill or combined), audit log, Excel stock report.
 - **Several companies** in one app.
 - **Backups:** automatic, plus copies to a folder you choose.
 
@@ -54,7 +54,7 @@ Saving a sale takes stock out. Deleting the sale puts it back.
 
 **Changing a payment:** under *Payment History*, press **Edit** on the payment. Its amount, method and note load into the *Record payment* box. Change them and press **Save Payment Changes**. Press **Cancel edit** to keep it as it was. Press **Delete** to remove the payment.
 
-Paying a supplier works the same way: open the bill under **Purchases**. It has the same payment box and history as an invoice, and **Close bill** records the whole amount still due. From a customer's page, **Edit** on a payment opens that invoice with the payment ready to change.
+Paying a supplier works the same way: open the bill under **Purchases**. On the supplier's page, the **Show** box chooses *All bills combined* or one bill. The three figures at the top then show the totals for that choice. It has the same payment box and history as an invoice, and **Close bill** records the whole amount still due. From a customer's page, **Edit** on a payment opens that invoice with the payment ready to change.
 
 ---
 
@@ -103,7 +103,7 @@ Under **Reports**:
 
 - **Sales report** and **GST report**
 - **Outstanding dues:** who owes you, and whom you owe
-- **Party ledger:** the full account of one customer or supplier
+- **Party ledger:** the full account of one customer or supplier. When you download it for several bills, choose **PDF: combined table** (one table for all) or **PDF: table per bill** (a separate table with its own heading for each bill, in one PDF)
 - **Audit log:** a record of changes
 
 ---

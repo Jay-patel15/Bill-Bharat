@@ -18,9 +18,11 @@ export async function GET(req) {
       const statement = await partyStatement(companyId, party, q.get("key") || "", q.get("from") || "", q.get("to") || "", (q.get("ids") || "").split(",").filter(Boolean));
       if (!statement) return fail("No bills found for this party", 404);
 
+      // layout=bills: a heading and table for each bill; anything else: one combined table.
+      const layout = q.get("layout") === "bills" ? "bills" : "combined";
       const safe = statement.name.replace(/[^a-zA-Z0-9]+/g, "-").slice(0, 40);
-      return new Response(generateStatementPdf({ company, statement }), {
-        headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="statement-${safe}.pdf"` }
+      return new Response(generateStatementPdf({ company, statement, layout }), {
+        headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="statement-${safe}${layout === "bills" ? "-per-bill" : ""}.pdf"` }
       });
     } catch (e) { return fail(e.message, e.status || 500); }
   });

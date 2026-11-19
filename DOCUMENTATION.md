@@ -37,14 +37,27 @@ For the product overview and how to build the `.exe`, see [README.md](README.md)
 | Money received against an invoice | Open the invoice → *Record payment*. If the amount is more than what is pending, a warning appears: *Re-edit amount* or *Ignore and record anyway*. The *Payment History* under the box has **Edit** and **Delete** on each payment (see *Changing a payment*). |
 | Print an invoice | Open the invoice → **Print**, or press `Ctrl+P` on the invoice page. The invoice goes straight to the printer; there is no separate PDF step. |
 | Purchase bill | Purchases → New (`F9`), or *AI Purchase Reader* to fill it from a PDF/photo. Stock goes up. |
-| Paying a supplier | Purchases → the bill → *Record payment*. The bill's *Payment History* has **Edit** and **Delete** on each payment. Supplier bills list has *Pay Bill* on every bill. |
+| Paying a supplier | Purchases → the supplier → the bill → *Record payment*. The bill's *Payment History* has **Edit** and **Delete** on each payment. Each row of the supplier's *Supplier Bills* list has *Pay Bill* for that bill. |
+| Supplier summary for one bill | Purchases → the supplier → **Show** (dropdown above the figures). *All bills combined* shows the totals of every bill. Choose a bill to show only its *Total Billed*, *Amount Paid* and *Pending Balance*. |
 | Payments from a customer | Customers → the customer → *Payments received*. **Edit** opens that invoice with the payment loaded into its *Record payment* box; **Delete** removes it. |
 | Who owes you / whom you owe | Reports → Outstanding → *Customers* or *Suppliers* → *Download PDF*. |
 | Install a newer BillBharat | Settings → Updates → *Check for updates* (desktop app only). See *Settings → Updates* in section 2. |
-| One party's full account | Reports → Party ledger → pick the party → detailed ledger (every bill and payment, running balance). Tick one or more invoices to limit it to those; *All* shows every invoice → *PDF* prints the same view. |
+| One party's full account | Reports → Party ledger → pick the party → detailed ledger (every bill and payment, running balance). Tick one or more invoices to limit it to those; *All* shows every invoice. The PDF buttons depend on how many bills are included (see *Party ledger PDF* below). |
 | GST figures and GSTR-1 JSON | Reports → GST. |
 
 **Deleting a sale or purchase** puts the stock back and removes its payments and ledger entries.
+
+### Party ledger PDF
+
+Reports → Party ledger. Choose the party, then the bills to include: *All*, or tick some of them.
+
+- **One bill** (one invoice, or one ticked bill): a single **PDF** button. The PDF has that bill's lines with opening and closing balance.
+- **Several bills** (*All*, or two or more ticked): two buttons. Pick the layout:
+  - **PDF: combined table**: one table with every bill's lines in date order, and one running balance. Use this for a single statement of the account.
+  - **PDF: table per bill**: one PDF with a heading for each bill (*Invoice* or *Bill* number, date, amount), then that bill's own table: its opening balance, its lines, and its closing balance. A totals line and the amount receivable (or payable) come at the end. Use this to check each bill separately.
+- Both PDFs use the same figures. The per-bill tables add up to the combined totals.
+- The on-screen table is always the combined table.
+- Date range (*From* / *To*) applies to both layouts. Bills dated before *From* carry their balance forward as the opening balance.
 
 ### Changing a payment
 
@@ -342,7 +355,7 @@ Building the `.exe` is described in [README.md](README.md#build-the-windows-exe)
 - **Every release needs a higher `version` in `package.json`.** The update check ignores a release that is not newer, and the pre-update backup is named after the old version.
 - **Dependencies:** `electron-updater` is the only library added for updates. Do not add another updater without removing it.
 - **A new dependency used by the desktop shell** (`electron/`) must also be listed in `build.files` in `package.json`, with its runtime dependencies. The installer excludes `node_modules` by default. Version 1.0.1 crashed on start because this was missing. After any change, build with `npm run dist:dir` and check that `dist/win-unpacked/resources/app/node_modules/<package>` exists.
-- **Run the self-checks** before a release: `node scripts/test-payment-edit.mjs`, `node scripts/test-gst-payments.mjs`, `node scripts/test-sale-edit.mjs`, `node scripts/test-consumables.mjs`, `node scripts/test-back.mjs`.
+- **Run the self-checks** before a release: `node scripts/test-payment-edit.mjs`, `node scripts/test-party-ledger-bills.mjs`, `node scripts/test-gst-payments.mjs`, `node scripts/test-sale-edit.mjs`, `node scripts/test-consumables.mjs`, `node scripts/test-back.mjs`.
 
 ---
 
@@ -382,6 +395,14 @@ The Daily Book (cash book), the expense manager, the manual cash vouchers and th
 ---
 
 ## 10. Changes
+
+### Version 1.0.4
+
+**Added**
+
+- **Supplier summary by bill:** the *Record Payment / Pay Bill* button on the supplier page is removed. A **Show** dropdown above the three figures chooses *All bills combined* or one bill. Total Billed, Amount Paid and Pending Balance follow the choice; the selected bill's row is highlighted in the table.
+- **Party ledger PDF, one table per bill:** when several bills are included, the Party ledger offers *PDF: combined table* or *PDF: table per bill* (a separate table with its own heading for each bill, in one PDF). The per-bill tables add up to the combined totals. See *Party ledger PDF*.
+- **Self-check:** `scripts/test-party-ledger-bills.mjs`.
 
 ### Version 1.0.3
 
