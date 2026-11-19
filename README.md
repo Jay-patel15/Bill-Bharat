@@ -84,19 +84,17 @@ For a quicker test build without installers: `npm run dist:dir` (produces only `
 The app checks the public GitHub repo `Jay-patel15/Bill-Bharat` for a newer installer. To ship one:
 
 1. Raise `"version"` in `package.json` (for example `1.0.1` → `1.0.2`). The installed app only offers a version higher than its own.
-2. Create a GitHub token with permission to write releases to the repo, then in PowerShell: `$env:GH_TOKEN = "<token>"`.
-3. Run `npm run release`. It builds the installer and uploads it, with `latest.yml`, to a new GitHub release.
-4. Check that the release on GitHub lists the `BillBharat-<version>-x64.exe` file and `latest.yml`.
+2. Run `npm run check` and `npm run build`, then commit and push the code.
+3. Tag the commit: `git tag -a v1.0.2 -m "BillBharat 1.0.2"` and `git push origin v1.0.2`.
+4. Create a GitHub token with permission to write releases to the repo, then in PowerShell: `$env:GH_TOKEN = "<token>"`.
+5. Run `npm run release`. It builds the installer and uploads it, with `latest.yml`, as a published GitHub release.
+6. Check the release on GitHub lists the `BillBharat-<version>-x64.exe` file and `latest.yml`. Details and limits: `DOCUMENTATION.md`, section 6, *Releasing an update*.
 
 Users then press **Settings → Check for updates**, confirm, and the app downloads, installs and restarts. The portable exe cannot update itself; those users download the new installer.
 
 Do not commit `GH_TOKEN`. Keep it in your environment only.
 
-### Releasing an update
-
-1. Raise `"version"` in `package.json` (for example `1.0.0` → `1.0.1`).
-2. Run `npm run dist` and hand out the new installer.
-3. Users install over the old version. On first start the app **backs up their books automatically** (`backup_v1.0.0_…db` in the backups folder) before applying any database changes.
+When a user installs over an older version, the app **backs up their books automatically** on first start (`backup_v<old version>_…db` in the backups folder) before applying any database changes.
 
 ### Optional
 

@@ -120,10 +120,11 @@ function UpdateCard() {
     finally { setBusy(false); }
   }
 
-  if (!desktop) return null;
   return (
     <Section icon={RefreshCw} title="Updates" hint="Looks for a newer BillBharat on GitHub. Your books are not changed by an update.">
-      <Button size="sm" variant="outline" disabled={busy} onClick={check}>{busy ? "Checking…" : "Check for updates"}</Button>
+      {desktop
+        ? <Button size="sm" variant="outline" disabled={busy} onClick={check}>{busy ? "Checking…" : "Check for updates"}</Button>
+        : <p className="text-sm text-muted-foreground">Works in the BillBharat desktop app only (not in a browser on localhost).</p>}
       {msg && <p className={`text-sm ${msg.ok ? "text-emerald-700" : "text-destructive"}`}>{msg.text}</p>}
     </Section>
   );

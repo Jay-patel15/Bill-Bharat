@@ -40,6 +40,7 @@ For the product overview and how to build the `.exe`, see [README.md](README.md)
 | Paying a supplier | Purchases → the bill → *Record payment*. The bill's *Payment History* has **Edit** and **Delete** on each payment. Supplier bills list has *Pay Bill* on every bill. |
 | Payments from a customer | Customers → the customer → *Payments received*. **Edit** opens that invoice with the payment loaded into its *Record payment* box; **Delete** removes it. |
 | Who owes you / whom you owe | Reports → Outstanding → *Customers* or *Suppliers* → *Download PDF*. |
+| Install a newer BillBharat | Settings → Updates → *Check for updates* (desktop app only). See *Settings → Updates* in section 2. |
 | One party's full account | Reports → Party ledger → pick the party → detailed ledger (every bill and payment, running balance). Tick one or more invoices to limit it to those; *All* shows every invoice → *PDF* prints the same view. |
 | GST figures and GSTR-1 JSON | Reports → GST. |
 
@@ -111,7 +112,7 @@ Dates print as dd/mm/yyyy. **Long bills continue automatically:** each full page
 | **Invoice template** | *Invoice number format* (see below). Turn each part of the invoice on or off and rename its label; upload the logo; tagline lines; declaration; terms; reverse charge Yes/No. Live A4 preview on the right; tick *Preview a long bill* to see page 2. *Reset to default* restores the standard layout. Saved per company. |
 | **Terms & Conditions** | One term per line; printed numbered (1., 2., 3.…) at the foot of every invoice. Same text as in Company details and the template editor. |
 | **Backup & Restore** | *Extra backup folders*: up to 5 folders (one per line) that get a copy of every backup; *Save folders* tests that each can be written and makes a first copy. *Back up now* backs up to the backups folder and every extra folder. *Download a copy* saves one `.db` file wherever you choose. *Restore from file…* checks the file and saves the current books before replacing them. See [Keeping backups safe](#keeping-backups-safe-windows-crash-or-drive-reset). |
-| **Updates** | *Check for updates* (desktop app only) looks for a newer BillBharat on GitHub. If one exists, it asks you to confirm, downloads it, installs it silently and restarts. The books are not changed; the server backs them up before the new version runs. This is the only time the app contacts the internet, and only when you press the button. The portable exe cannot update itself. |
+| **Updates** | *Check for updates* (desktop app only; a browser shows a note instead of the button). It asks GitHub for the newest published release. If that release is newer than this version, it asks you to confirm, downloads the installer, installs it silently and restarts BillBharat. Your books are not changed: the server copies them to the backups folder first when a new version starts. This is the only time the app contacts the internet for updates. The portable exe cannot update itself. How releases are published: section 6, *Releasing an update*. |
 | **Reset (erase all books)** | *Reset all books…* asks for your **login password**, then deletes every company with its customers, items, invoices, purchases, payments, ledger, audit log, invoice templates, logo and uploaded bills. Kept: your login, the AI key and backup folders. A full backup `before_reset_<time>.db` is saved first, so *Restore from file…* undoes it. A wrong password erases nothing. |
 | **Gemini AI bill reader** | Optional. Paste a key from aistudio.google.com/app/apikey to let the AI read purchase bills. Stored encrypted on this PC. Without it, everything works by hand. |
 | **Product master names** | Names the AI reader maps supplier wording onto. |
@@ -142,7 +143,8 @@ The logo can be any image; it is stored as PNG so it always prints. Bank details
 | `Alt+A` | Accept (save) the current form or open dialog |
 | `Alt+C` | Quick-create a customer, or an item when in an item grid |
 | `F2` | Jump to the date field |
-| `Enter` | Next field; on the last cell of the last item row adds a new row; on the last field of a form saves |
+| `Enter` | Next field; on the last cell of the last item row moves to the blank row below it (that row is added as soon as the last row has an item name); on the last field of a form saves |
+| `Ctrl+P` | On an invoice: print it directly (same as the **Print** button). Elsewhere in the desktop app: print the page. |
 | Item search | Type part of a name, SKU, barcode or HSN (`tmt12` finds "TMT Bar 12mm"), `↑`/`↓`, `Enter`. A scanned barcode is picked at once. |
 | `Esc` | Close the dialog, or go back |
 
@@ -292,6 +294,31 @@ Secret: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))
 
 Building the `.exe` is described in [README.md](README.md#build-the-windows-exe).
 
+### Releasing an update
+
+**How the update button works**
+
+- `electron/main.js` → `registerUpdater()` uses `electron-updater`. `update:check` reads `latest.yml` from the newest GitHub release and reports an update only when its version is higher than the installed one. `update:install` downloads the installer, runs it silently and quits so the install can replace the app.
+- `electron/preload.js` exposes those two calls to the page as `window.billbharatDesktop`. The Settings card shows the button only when that object exists, so a plain browser shows a note instead.
+- The repo is public (`Jay-patel15/Bill-Bharat`), so the app reads releases without a token. The package.json `build.publish` block names the repo and sets `releaseType: "release"`. Drafts are not visible to the updater.
+- Unpacked builds (`npm run dev:app`) report *Updates are checked in the installed app only* and never install.
+
+**To publish version X.Y.Z**
+
+1. Set `"version"` in `package.json` to `X.Y.Z`. It must be higher than the last published release.
+2. Run `npm run check` and `npm run build`. Fix anything they report.
+3. Commit and push the code, then tag it: `git tag -a vX.Y.Z -m "BillBharat X.Y.Z"` and `git push origin vX.Y.Z`. Do this before step 5, so the release points at this commit.
+4. Create a GitHub token with permission to write releases to this repo. In PowerShell set it for the session only: `$env:GH_TOKEN = "<token>"`. Never write it into a file or commit it. `.env` and `.env.local` are git-ignored; keep it out of them too.
+5. Run `npm run release`. It builds the app and uploads `BillBharat-X.Y.Z-x64.exe`, its `.blockmap` and `latest.yml` to a published release `vX.Y.Z`.
+6. Check the release: `https://api.github.com/repos/Jay-patel15/Bill-Bharat/releases/latest` should show `tag_name` `vX.Y.Z`, `"draft": false`, and the three files. Then test: install the previous version on a copy of your data, press *Check for updates*, and confirm the books are still there and a `backup_v<old version>_*.db` appeared in the backups folder.
+
+**Limits**
+
+- Users on versions before 1.0.1 have no update button. They install the new installer once, by hand, over the old one. Their data stays.
+- The portable exe is not published by `npm run release` and cannot update itself.
+- The installer is not code-signed, so Windows SmartScreen may warn when it runs. A code-signing certificate removes the warning.
+- The update check is the only outbound request the app makes on its own, and only when the button is pressed. The app window still loads only the local server. The updater uses its own network session, so the window's request filter does not block it.
+
 ---
 
 ## 7. Changing the code safely
@@ -303,6 +330,8 @@ Building the `.exe` is described in [README.md](README.md#build-the-windows-exe)
 - **Dates:** use `localDate()`, never `toISOString().slice(0, 10)` (UTC: wrong before 05:30 IST).
 - **Never add `{"type":"module"}`** to the project or `lib/`; it breaks `jspdf-autotable` in production builds only.
 - Run `npm run check` and `npm run build` before shipping.
+- **Every release needs a higher `version` in `package.json`.** The update check ignores a release that is not newer, and the pre-update backup is named after the old version.
+- **Dependencies:** `electron-updater` is the only library added for updates. Do not add another updater without removing it.
 
 ---
 
@@ -317,6 +346,9 @@ Building the `.exe` is described in [README.md](README.md#build-the-windows-exe)
 | Portable exe silent for ~30 s | It self-extracts first; use the installer for daily use. |
 | Desktop icon, taskbar or Start menu still shows the Electron icon | Rebuild with `npm run dist`: `scripts/set-exe-icon.cjs` writes `build/icon.ico` into the program after packing (look for `icon set on BillBharat.exe` in the build output). Uninstall the old version, install the new one. Windows caches icons: pin again or restart Explorer if the old one stays. |
 | WhatsApp or Email button in the desktop app looks stuck | The desktop app saves the PDF to Downloads and opens WhatsApp or your mail app; it does not use the system share sheet. Attach the saved PDF and close the window when done. |
+| *Check for updates* is missing | The Updates card is in version 1.0.1 and later, and the button only works in the installed desktop app. In a browser (localhost) the card shows a note. Install 1.0.1 by hand once. |
+| *Check for updates* says "Could not check for updates" | No internet, GitHub unreachable, or no published release. Open `https://github.com/Jay-patel15/Bill-Bharat/releases` to see the newest version. |
+| *Update failed* after you confirmed | Antivirus or SmartScreen blocked the installer. Download the installer from the release page and run it by hand. Your books are kept. |
 | *Edit* is missing on an invoice | The invoice has payments. Its items can be changed only before payments are recorded. Payments themselves can still be edited or deleted in *Payment History*. |
 | "Unknown column updatedAt for payments" when editing a payment | Fixed in this version: payments have no `updatedAt` column, and the shared update helper (`lib/db.js`) now writes it only for tables that have it. Update the app. |
 | *Consumables can only be recorded on the Electrical Works line* | Parts were attached to a line that is not Electrical Works. Pick the Electrical Works item from the list, then add the parts again. |
@@ -338,7 +370,7 @@ The Daily Book (cash book), the expense manager, the manual cash vouchers and th
 
 ---
 
-## 10. Changes in this version
+## 10. Changes in this version (1.0.1)
 
 **Added**
 

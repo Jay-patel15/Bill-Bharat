@@ -154,3 +154,20 @@ Open **Settings** from the left menu.
 | WhatsApp or Email in the desktop app does not attach the PDF | Attach the PDF from your Downloads folder yourself. The message is already filled in. |
 | A red *Negative* label on an item | Check your purchases and stock count, then correct the item. |
 | I forgot my password | Use the recovery code you wrote down at sign-up. If you lost it and can still sign in, make a new one in **Settings → Recovery code**. |
+
+---
+
+## 14. Updating BillBharat
+
+When a new version is published, you can install it yourself. Your books are kept.
+
+1. Open **Settings** and scroll to **Updates**.
+2. Press **Check for updates**.
+3. If a newer version is found, BillBharat asks you to confirm. Press **OK** to download it.
+4. The new version installs by itself and BillBharat restarts. Nothing needs to be uninstalled.
+
+Before the new version starts, BillBharat saves a copy of your books to the backups folder (File → Open Backups Folder), named `backup_v<old version>_<time>.db`.
+
+- The button needs the **installed** BillBharat, not a browser. It needs internet only when you press it.
+- Versions before 1.0.1 do not have the button. Download the installer from https://github.com/Jay-patel15/Bill-Bharat/releases/latest and run it over the old one once.
+- The portable version cannot update itself. Download the new installer instead.
