@@ -29,6 +29,8 @@
 @layer base {
   * { @apply border-border; }
   body { @apply bg-background text-foreground; font-feature-settings: "rlig" 1, "calt" 1; }
+  /* A grid without explicit columns must not grow past its container (wide tables made pages overflow on phones). */
+  .grid { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* Subtle scrollbar */

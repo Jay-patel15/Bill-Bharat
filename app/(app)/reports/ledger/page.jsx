@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { ReportsNav } from "@/components/reports-nav";
+import { PdfPreview } from "@/components/pdf-preview";
 import { NoCompanySelected } from "@/components/empty-state";
 import { useCompany, api } from "@/components/company-context";
 import { formatINR, formatDate, cn } from "@/lib/utils";
@@ -26,6 +27,8 @@ export default function LedgerPage() {
   const [parties, setParties] = useState([]);
   const [st, setSt] = useState(null);
   const [error, setError] = useState("");
+  // Print preview of a statement PDF: { src, name } while open.
+  const [preview, setPreview] = useState(null);
 
   const go = (patch) => {
     const next = new URLSearchParams({ party, key, ids, ...range, ...patch });
@@ -81,11 +84,11 @@ export default function LedgerPage() {
         <label className="text-xs">From<Input type="date" value={range.from} onChange={(e) => setRange({ ...range, from: e.target.value })} /></label>
         <label className="text-xs">To<Input type="date" value={range.to} onChange={(e) => setRange({ ...range, to: e.target.value })} /></label>
         <Button variant="outline" onClick={() => go({})}>Show</Button>
-        {pdfHref && !choice && <a href={pdfHref("combined")} target="_blank" rel="noreferrer"><Button className="gap-1.5"><FileDown className="h-4 w-4" />PDF</Button></a>}
+        {pdfHref && !choice && <Button className="gap-1.5" onClick={() => setPreview({ src: pdfHref("combined"), name: `statement-${st.name}.pdf` })}><FileDown className="h-4 w-4" />PDF</Button>}
         {pdfHref && choice && (
           <>
-            <a href={pdfHref("combined")} target="_blank" rel="noreferrer"><Button className="gap-1.5"><FileDown className="h-4 w-4" />PDF: combined table</Button></a>
-            <a href={pdfHref("bills")} target="_blank" rel="noreferrer"><Button variant="outline" className="gap-1.5"><FileDown className="h-4 w-4" />PDF: table per bill</Button></a>
+            <Button className="gap-1.5" onClick={() => setPreview({ src: pdfHref("combined"), name: `statement-${st.name}.pdf` })}><FileDown className="h-4 w-4" />PDF: combined table</Button>
+            <Button variant="outline" className="gap-1.5" onClick={() => setPreview({ src: pdfHref("bills"), name: `statement-${st.name}-per-bill.pdf` })}><FileDown className="h-4 w-4" />PDF: table per bill</Button>
           </>
         )}
       </div>
@@ -150,6 +153,8 @@ export default function LedgerPage() {
             </Table>
         </>
       )}
+
+      <PdfPreview src={preview?.src} fileName={preview?.name} onClose={() => setPreview(null)} />
     </div>
   );
 }

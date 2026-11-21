@@ -13,6 +13,9 @@ BillBharat is a billing app for your business. It makes GST invoices, keeps your
 - **Electrical work with parts:** bill one amount for the work while the parts come out of stock.
 - **Purchases:** record supplier bills by hand, or let the AI reader fill one in from a photo or PDF (optional).
 - **Payments:** part or full payments on invoices and bills. The status updates by itself.
+- **Lump-sum payments:** one amount settles a customer's or a supplier's oldest bills first. You see the split before you save.
+- **Print preview:** check an invoice or statement before printing, and save the PDF wherever you choose.
+- **Phone menu:** on a phone or small tablet, the **☰** button at the top left opens the menu.
 - **Edit an unpaid invoice** and **send an invoice** by WhatsApp or email.
 - **Reports:** Sales, GST, outstanding dues, party ledger (with a PDF per bill or combined), audit log, Excel stock report.
 - **Several companies** in one app.
@@ -56,6 +59,11 @@ Saving a sale takes stock out. Deleting the sale puts it back.
 
 Paying a supplier works the same way: open the bill under **Purchases**. On the supplier's page, the **Show** box chooses *All bills combined* or one bill. The three figures at the top then show the totals for that choice. It has the same payment box and history as an invoice, and **Close bill** records the whole amount still due. From a customer's page, **Edit** on a payment opens that invoice with the payment ready to change.
 
+**Lump sum (one amount for several bills).** On a customer's page press **Receive lump sum**. For a supplier, open the supplier under **Purchases** and press **Pay lump sum**. Type the amount and the method. A table shows, before you save, which bills the money clears and how much each takes. The oldest bill is paid first, then the next, until the amount runs out.
+
+- If the amount is more than everything still owed, it is refused and nothing is saved.
+- Each bill gets its own payment, noted *Part of lump sum of …*, dated today. You can see each one in the bill's Payment History and in the customer's *Payments received* list. A supplier's passbook shows every part too.
+
 ---
 
 ## 5. Edit an invoice
@@ -73,6 +81,8 @@ On the invoice, press **WhatsApp** or **Email**. The PDF goes with a short messa
 
 - In a browser or on a phone, the PDF is attached for you. Pick WhatsApp or Gmail.
 - In the **BillBharat desktop app**, the PDF is saved to your **Downloads** folder and WhatsApp (or your mail app) opens with the message. Attach the saved PDF yourself.
+
+**Print or keep a copy.** *Print / Save PDF* on an invoice (or on the invoice rows in *Sales / Invoices* and on a customer's page) opens a **print preview**. Press **Print** to print, or **Save as…** to keep a copy in the folder you choose. The party ledger and outstanding PDFs open the same preview.
 
 ---
 
@@ -94,6 +104,7 @@ Parts can be added only on a Tax Invoice.
 - Each sale takes stock out. Each purchase puts stock in.
 - A red **Negative** label means you have billed more than your recorded stock. Check your purchases and stock count, then correct the item.
 - **Low stock warning:** set a **Low stock threshold** on an item in Inventory (a number above 0). When its stock is at or below that number, the item appears in the **Low stock** card on the dashboard. The default is 0, which turns the warning off for that item.
+- An item with no threshold of its own uses the **company default** from **Settings → Low stock alert**. The default starts at 0, which means no alert for those items.
 - **Stock Report** downloads the list to Excel.
 
 ---
@@ -117,6 +128,7 @@ Open **Settings** from the left menu.
 |---|---|
 | **Company details** | Name, GST number, PAN, address, phone, email, logo and bank details. Press *Edit company details*. *All companies* lists your companies. |
 | **Invoice template** | Choose what the GST invoice shows and rename its parts. You can also set the invoice number format, such as `INV/{FY}/{###}`. There is a live preview. |
+| **Low stock alert** | The default number of units below which an item counts as low on stock. Items with their own threshold keep it. `0` turns the default off. |
 | **Terms & Conditions** | One term per line. They print numbered on the invoice. |
 | **Recovery code** | Makes a new recovery code and shows it once. The old code stops working. Write the new one down. |
 | **Updates** | *Check for updates* looks for a newer BillBharat. If there is one, you confirm, it downloads, installs and restarts. Your books are kept. Needs internet only at that moment. The portable version cannot update itself; download the new installer. |
@@ -131,6 +143,7 @@ Open **Settings** from the left menu.
 
 - **Back** (top left) takes you to the page you came from.
 - **Esc** does the same when no box is open.
+- On a phone or a small tablet, the **☰** button at the top left opens the menu. Pick a page, or press Esc to close the menu.
 - The **company name** at the top switches between companies.
 - **F8** opens a new sale and **F9** opens a new purchase.
 

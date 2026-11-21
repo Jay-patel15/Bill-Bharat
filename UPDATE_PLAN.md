@@ -1,6 +1,6 @@
 # BillBharat — Update Plan (for later)
 
-Status: **planned, not built.** Nothing in this file is active yet.
+Status: **built in 1.0.1** (the *Check for updates* button; see DOCUMENTATION.md, section 6). This file is kept for the decisions it records.
 
 ## Goal
 

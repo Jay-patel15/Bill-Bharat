@@ -13,6 +13,7 @@ import { api, useCompany } from "@/components/company-context";
 import { useToast } from "@/components/ui/toast";
 import { formatINR, localDate } from "@/lib/utils";
 import { GST_SLABS, GST_UNITS, isGstCompany } from "@/lib/gst";
+import { alertLevel, isLowStock } from "@/lib/stock";
 import { NoCompanySelected } from "@/components/empty-state";
 
 
@@ -31,11 +32,17 @@ export default function InventoryPage() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(empty);
   const [loading, setLoading] = useState(false);
+  // Company default low-stock level from Settings (0 = off); items with their own threshold ignore it.
+  const [lowDefault, setLowDefault] = useState(0);
 
 
   async function load() {
     if (!active?.id) { setList([]); return; }
-    try { setList(await api("/api/inventory") || []); }
+    try {
+      const [items, low] = await Promise.all([api("/api/inventory"), api("/api/settings/low-stock")]);
+      setList(items || []);
+      setLowDefault(Number(low?.threshold) || 0);
+    }
     catch { setList([]); }
   }
   useEffect(() => { load(); }, [active?.id]);
@@ -90,10 +97,10 @@ export default function InventoryPage() {
       "Purchase Price (₹)": Number(it.purchasePrice || 0),
       "Selling Price (₹)":  Number(it.sellingPrice || 0),
       "Qty in Stock":       Number(it.quantity || 0),
-      "Low Stock Alert":    Number(it.lowStockThreshold || 0),
+      "Low Stock Alert":    alertLevel(it, lowDefault),
       "Stock Value (₹)":    Number(it.quantity || 0) * Number(it.purchasePrice || 0),
       "Status":             Number(it.quantity) < 0 ? "NEGATIVE STOCK"
-                              : Number(it.quantity) <= Number(it.lowStockThreshold) && Number(it.lowStockThreshold) > 0
+                              : isLowStock(it, lowDefault)
                               ? "LOW STOCK" : "OK"
     }));
 
@@ -149,7 +156,7 @@ export default function InventoryPage() {
             <Table>
               <THead>
                 <TR>
-                  <TH>Name</TH><TH>SKU</TH><TH>HSN</TH><TH>Unit</TH>{gstOn && <TH>GST</TH>}
+                  <TH>Name</TH><TH>SKU</TH><TH className="hidden md:table-cell">HSN</TH><TH className="hidden md:table-cell">Unit</TH>{gstOn && <TH>GST</TH>}
                   <TH className="text-right">Buy</TH>
                   <TH className="text-right">Sell</TH>
                   <TH className="text-right">Stock</TH>
@@ -158,7 +165,7 @@ export default function InventoryPage() {
               </THead>
               <VirtualTBody items={filtered} colSpan={9}>
                 {(it) => {
-                  const low = Number(it.quantity) <= Number(it.lowStockThreshold) && Number(it.lowStockThreshold) > 0;
+                  const low = isLowStock(it, lowDefault);
                   const negative = Number(it.quantity) < 0;
                   return (
                     <TR key={it.id}>
@@ -167,8 +174,8 @@ export default function InventoryPage() {
                         {it.category ? <span className="ml-2 text-xs text-muted-foreground">{it.category}</span> : null}
                       </TD>
                       <TD>{it.sku || "—"}</TD>
-                      <TD>{it.hsnCode || "—"}</TD>
-                      <TD><Badge variant="outline">{it.unit || "PCS"}</Badge></TD>
+                      <TD className="hidden md:table-cell">{it.hsnCode || "—"}</TD>
+                      <TD className="hidden md:table-cell"><Badge variant="outline">{it.unit || "PCS"}</Badge></TD>
                       {gstOn && <TD>{it.gstRate}%</TD>}
                       <TD className="text-right">{formatINR(it.purchasePrice)}</TD>
                       <TD className="text-right">{formatINR(it.sellingPrice)}</TD>
@@ -233,7 +240,10 @@ export default function InventoryPage() {
             <Input type="number" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: Number(e.target.value) })} />
           </Field>
           <Field label="Low stock threshold">
-            <Input type="number" value={form.lowStockThreshold} onChange={(e) => setForm({ ...form, lowStockThreshold: Number(e.target.value) })} />
+            <Input type="number" min="0" value={form.lowStockThreshold} onChange={(e) => setForm({ ...form, lowStockThreshold: Number(e.target.value) })} />
+            <p className="mt-1 text-xs text-muted-foreground">
+              0 uses the company default{lowDefault > 0 ? ` (${lowDefault})` : " (off)"}, set in Settings.
+            </p>
           </Field>
         </form>
       </Dialog>

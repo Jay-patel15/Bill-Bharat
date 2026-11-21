@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FileDown, Plus } from "lucide-react";
+import { Banknote, FileDown, Plus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
@@ -12,6 +12,9 @@ import { api, useCompany } from "@/components/company-context";
 import { useToast } from "@/components/ui/toast";
 import { formatINR, formatDate, diffDays, STATES, DOCUMENT_TYPES } from "@/lib/utils";
 import { navReplace } from "@/components/back-handler";
+import { PdfPreview } from "@/components/pdf-preview";
+import { LumpSumDialog } from "@/components/lump-sum-dialog";
+import { oldestFirst } from "@/lib/payments";
 
 export default function CustomerDetailPage({ params }) {
   const router = useRouter();
@@ -24,6 +27,9 @@ export default function CustomerDetailPage({ params }) {
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [lumpOpen, setLumpOpen] = useState(false);
+  // Print preview of one invoice PDF: { src, name } while open.
+  const [preview, setPreview] = useState(null);
 
   async function load() {
     try {
@@ -56,6 +62,13 @@ export default function CustomerDetailPage({ params }) {
     };
   }, [sales]);
 
+  // Open bills in pay order for the lump-sum preview: oldest first, with what each still owes.
+  const lumpBills = sales
+    .filter((s) => (s.documentType || "Tax Invoice") === "Tax Invoice")
+    .map((s) => ({ id: s.id, number: s.invoiceNumber, date: s.invoiceDate, pending: Number(s.total || 0) - Number(s.amountPaid || 0) }))
+    .filter((b) => b.pending > 0)
+    .sort(oldestFirst);
+
   if (!customer) return <div className="text-sm text-muted-foreground">Loading…</div>;
 
   async function deletePayment(paymentId) {
@@ -67,6 +80,13 @@ export default function CustomerDetailPage({ params }) {
     } catch (e) {
       toast({ type: "error", title: "Failed to delete payment", message: e.message });
     }
+  }
+
+  // One amount settles the customer's invoices, oldest first; the server records each part.
+  async function receiveLump(amount, method) {
+    const r = await api(`/api/customers/${params.id}/lump-payment`, { method: "POST", body: JSON.stringify({ amount, method }) });
+    await load();
+    return r;
   }
 
   // Opens the payment's invoice with this payment loaded in its Record Payment box.
@@ -95,7 +115,10 @@ export default function CustomerDetailPage({ params }) {
             <p className="text-sm text-muted-foreground">{customer.gstNumber || "No GSTIN"} · {customer.phone || customer.email || ""}</p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setLumpOpen(true)} disabled={lumpBills.length === 0} title="One amount, applied to the oldest invoice first">
+            <Banknote className="h-4 w-4" /> Receive lump sum
+          </Button>
           <Button variant="outline" onClick={() => setEditing((s) => !s)}>{editing ? "Cancel" : "Edit"}</Button>
           <Link href={`/sales/create-invoice?customer=${customer.id}`}>
             <Button><Plus className="h-4 w-4" /> New invoice</Button>
@@ -216,18 +239,11 @@ export default function CustomerDetailPage({ params }) {
                       </TD>
                       <TD onClick={() => router.push(`/sales/${s.id}`)}><StatusBadge status={s.status} /></TD>
                       <TD className="text-right">
-                        <a 
-                          href={`/api/sales/${s.id}/pdf`} 
-                          target="_blank" 
-                          rel="noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          title="Download Invoice PDF"
-                        >
-                          <Button size="sm" variant="outline" className="gap-1.5 px-4">
-                            <FileDown className="h-3.5 w-3.5" />
-                            <span>Download PDF</span>
-                          </Button>
-                        </a>
+                        <Button size="sm" variant="outline" className="gap-1.5 px-4" title="Print preview; save the PDF where you choose"
+                          onClick={(e) => { e.stopPropagation(); setPreview({ src: `/api/sales/${s.id}/pdf`, name: `${s.invoiceNumber || "invoice"}.pdf` }); }}>
+                          <FileDown className="h-3.5 w-3.5" />
+                          <span>Print / Save PDF</span>
+                        </Button>
                       </TD>
                     </TR>
                   );
@@ -268,6 +284,16 @@ export default function CustomerDetailPage({ params }) {
           )}
         </CardContent>
       </Card>
+
+      <LumpSumDialog
+        open={lumpOpen}
+        onClose={() => setLumpOpen(false)}
+        title={`Receive lump sum from ${customer.name}`}
+        verb="Received"
+        bills={lumpBills}
+        onSubmit={receiveLump}
+      />
+      <PdfPreview src={preview?.src} fileName={preview?.name} onClose={() => setPreview(null)} />
     </div>
   );
 }

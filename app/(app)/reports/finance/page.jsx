@@ -71,7 +71,7 @@ export default function FinanceReportPage() {
         </a>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Stat label="Sales" value={formatINR(totals.sales)} />
         <Stat label="Purchases" value={formatINR(totals.purchases)} />
         <Stat label="Profit" value={formatINR(totals.profit)} accent={totals.profit >= 0 ? "text-emerald-600" : "text-rose-600"} />

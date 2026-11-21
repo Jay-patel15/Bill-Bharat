@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { ReportsNav } from "@/components/reports-nav";
+import { PdfPreview } from "@/components/pdf-preview";
 import { NoCompanySelected } from "@/components/empty-state";
 import { useCompany, api } from "@/components/company-context";
 import { formatINR, formatDate, cn } from "@/lib/utils";
@@ -21,6 +22,8 @@ export default function OutstandingPage() {
   const [party, setParty] = useState("customers");
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
+  // Print preview of the outstanding PDF: { src, name } while open.
+  const [preview, setPreview] = useState(null);
 
   useEffect(() => {
     if (!active?.id) return;
@@ -41,9 +44,9 @@ export default function OutstandingPage() {
           <p className="text-sm text-muted-foreground">Unpaid bills, party by party, with days pending.</p>
         </div>
         {data?.totalParties > 0 && (
-          <a href={`/api/reports/outstanding/pdf?party=${party}&companyId=${active.id}`} target="_blank" rel="noreferrer">
-            <Button className="gap-1.5"><FileDown className="h-4 w-4" />Download PDF</Button>
-          </a>
+          <Button className="gap-1.5" onClick={() => setPreview({ src: `/api/reports/outstanding/pdf?party=${party}&companyId=${active.id}`, name: `outstanding-${party}.pdf` })}>
+              <FileDown className="h-4 w-4" />Print / Save PDF
+            </Button>
         )}
       </div>
 
@@ -119,6 +122,7 @@ export default function OutstandingPage() {
           ))}
         </>
       )}
+      <PdfPreview src={preview?.src} fileName={preview?.name} onClose={() => setPreview(null)} />
     </div>
   );
 }

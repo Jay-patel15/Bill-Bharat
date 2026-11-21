@@ -48,7 +48,7 @@ export default function SalesReportPage() {
         <CardContent className="grid gap-4 md:grid-cols-3 p-4">
           <Field label="From"><Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></Field>
           <Field label="To"><Input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></Field>
-          <div className="grid grid-cols-3 items-end gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 items-end gap-2 md:col-span-3">
             <SummaryStat label="Subtotal" value={formatINR(totals.subtotal)} />
             <SummaryStat label="Tax" value={formatINR(totals.tax)} />
             <SummaryStat label="Total" value={formatINR(totals.total)} />

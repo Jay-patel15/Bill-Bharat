@@ -1,15 +1,16 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Mail, Pencil, Printer, Save, Share2 } from "lucide-react";
+import { Mail, Pencil, Printer, Share2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PaymentSection } from "@/components/payment-section";
+import { PdfPreview } from "@/components/pdf-preview";
 import { StatusBadge } from "@/components/ui/badge";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { api, useCompany } from "@/components/company-context";
 import { useToast } from "@/components/ui/toast";
-import { formatINR, formatDate, getDocumentType, parseInvoiceNotes } from "@/lib/utils";
+import { formatINR, formatDate, getDocumentType } from "@/lib/utils";
 import { isGstCompany } from "@/lib/gst";
 import { navReplace } from "@/components/back-handler";
 
@@ -39,7 +40,8 @@ export default function SaleDetailPage({ params }) {
   const [customer, setCustomer] = useState(null);
   const [items, setItems] = useState([]);
   const [payments, setPayments] = useState([]);
-  const [pdfLink, setPdfLink] = useState("");
+  // Print preview of the invoice PDF: { src, name } while open.
+  const [preview, setPreview] = useState(null);
 
   // Set when the customer page opened this invoice to edit one payment.
   const [openPaymentId, setOpenPaymentId] = useState(null);
@@ -55,12 +57,6 @@ export default function SaleDetailPage({ params }) {
       if (editId) {
         window.history.replaceState(null, "", window.location.pathname);
         setOpenPaymentId(editId);
-      }
-      if (data.pdfUrl) setPdfLink(data.pdfUrl);
-      else if (data.notes) {
-        // Legacy invoices stored the saved-PDF link inside notes metadata.
-        const { drivePdfUrl } = parseInvoiceNotes(data.notes);
-        if (drivePdfUrl) setPdfLink(drivePdfUrl);
       }
       if (data.customerId) {
         try { setCustomer(await api(`/api/customers/${data.customerId}`)); } catch {}
@@ -106,29 +102,9 @@ export default function SaleDetailPage({ params }) {
     await load();
   }
 
-  /** Print the invoice PDF straight from a hidden frame, no download or new tab. */
-  async function printInvoice() {
-    try {
-      const res = await fetch(`/api/sales/${sale.id}/pdf`);
-      if (!res.ok) throw new Error("Could not build the PDF");
-      const frame = document.createElement("iframe");
-      frame.style.display = "none";
-      frame.src = URL.createObjectURL(await res.blob());
-      frame.onload = () => { frame.contentWindow.focus(); frame.contentWindow.print(); };
-      document.body.appendChild(frame);
-    } catch (e) { toast({ type: "error", title: "Could not print", message: e.message }); }
-  }
-
-  async function persistPdf() {
-    try {
-      toast({ type: "info", title: "Saving invoice PDF…" });
-      const res = await fetch(`/api/sales/${sale.id}/pdf?save=1`);
-      const json = await res.json();
-      if (json.ok && json.pdfUrl) {
-        setPdfLink(json.pdfUrl);
-        toast({ type: "success", title: "PDF saved", message: json.pdfUrl });
-      } else throw new Error(json.error || "Failed to save");
-    } catch (e) { toast({ type: "error", title: "Could not save PDF", message: e.message }); }
+  /** Opens the print preview; the user prints it or saves it where they choose. */
+  function printInvoice() {
+    setPreview({ src: `/api/sales/${sale.id}/pdf`, name: `${sale.invoiceNumber || "invoice"}.pdf` });
   }
 
   /**
@@ -186,14 +162,13 @@ export default function SaleDetailPage({ params }) {
           </div>
           <p className="text-sm text-muted-foreground">{formatDate(sale.invoiceDate)} · {customer?.name || "—"}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {canEdit && (
             <Button variant="outline" onClick={() => router.push(`/sales/create-invoice?edit=${sale.id}`)} title="Change items, quantities, rates or dates">
               <Pencil className="h-4 w-4" /> Edit
             </Button>
           )}
-          <Button variant="outline" onClick={printInvoice} title="Print invoice (Ctrl+P)"><Printer className="h-4 w-4" /> Print</Button>
-          <Button variant="outline" onClick={persistPdf} title="Save a copy of the invoice PDF"><Save className="h-4 w-4" /> Save PDF</Button>
+          <Button variant="outline" onClick={printInvoice} title="Print preview (Ctrl+P); save the PDF where you choose"><Printer className="h-4 w-4" /> Print / Save PDF</Button>
           <Button variant="outline" onClick={() => sharePdf("whatsapp")} title="Send the invoice PDF on WhatsApp"><Share2 className="h-4 w-4" /> WhatsApp</Button>
           <Button variant="outline" onClick={() => sharePdf("email")} title="Send the invoice PDF by email"><Mail className="h-4 w-4" /> Email</Button>
         </div>
@@ -253,6 +228,8 @@ export default function SaleDetailPage({ params }) {
         onUpdate={updatePayment}
         onDelete={deletePayment}
       />
+
+      <PdfPreview src={preview?.src} fileName={preview?.name} onClose={() => setPreview(null)} />
     </div>
   );
 }

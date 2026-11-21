@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { setInnerBack } from "@/components/back-handler";
-import { Plus, Sparkles, CreditCard, FileText, Trash2, Building2, FileClock, CheckCheck } from "lucide-react";
+import { Plus, Sparkles, CreditCard, FileText, Trash2, Building2, FileClock, CheckCheck, Banknote } from "lucide-react";
 import { PaymentSection } from "@/components/payment-section";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,8 @@ import { api, useCompany } from "@/components/company-context";
 import { formatDate, formatINR } from "@/lib/utils";
 import { isGstCompany } from "@/lib/gst";
 import { NoCompanySelected } from "@/components/empty-state";
+import { LumpSumDialog } from "@/components/lump-sum-dialog";
+import { oldestFirst, supplierKey } from "@/lib/payments";
 import { useToast } from "@/components/ui/toast";
 
 export default function PurchasesPage() {
@@ -32,6 +34,9 @@ export default function PurchasesPage() {
 
   const [selectedBill, setSelectedBill] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [lumpOpen, setLumpOpen] = useState(false);
+  // Party ledger lines (every bill and payment) of the supplier on screen, for the passbook.
+  const [passbookLines, setPassbookLines] = useState([]);
 
   useEffect(() => {
     if (active?.id) {
@@ -40,20 +45,33 @@ export default function PurchasesPage() {
     }
   }, [active?.id]);
 
+  // The passbook reads the party ledger: one line per bill and per payment, with running balance.
+  useEffect(() => {
+    if (!active?.id || !selectedSupplierName) return;
+    let alive = true;
+    setPassbookLines([]);
+    api(`/api/reports/ledger?party=suppliers&key=${encodeURIComponent(selectedSupplierName)}`)
+      .then((st) => { if (alive) setPassbookLines(st.ledger); })
+      .catch(() => { if (alive) setPassbookLines([]); });
+    return () => { alive = false; };
+  }, [active?.id, selectedSupplierName, list]);
+
   if (!active) return <NoCompanySelected />;
 
   // Group purchases by Supplier
   const suppliersMap = new Map();
   list.forEach(p => {
-    const sName = p.supplierName || "Unknown Supplier";
-    if (!suppliersMap.has(sName)) {
-      suppliersMap.set(sName, {
-        name: sName,
+    // Grouped the same way as the ledger and outstanding report: ignoring case and spaces.
+    const k = supplierKey(p.supplierName);
+    if (!suppliersMap.has(k)) {
+      suppliersMap.set(k, {
+        key: k,
+        name: (p.supplierName || "").trim() || "Unknown Supplier",
         gst: p.supplierGst,
         purchases: []
       });
     }
-    suppliersMap.get(sName).purchases.push(p);
+    suppliersMap.get(k).purchases.push(p);
   });
   
   const suppliers = Array.from(suppliersMap.values()).map(s => {
@@ -103,6 +121,13 @@ export default function PurchasesPage() {
   async function deleteBillPayment(id) {
     await api(`/api/payments/${id}`, { method: "DELETE" });
     await reloadBill();
+  }
+
+  // Lump sum to one supplier: the server pays their bills oldest first and records each part.
+  async function paySupplierLump(supplierName, amount, method) {
+    const r = await api("/api/purchases/lump-payment", { method: "POST", body: JSON.stringify({ supplierName, amount, method }) });
+    setList(await api("/api/purchases"));
+    return r;
   }
 
   async function handleDelete() {
@@ -225,6 +250,12 @@ export default function PurchasesPage() {
     const sBilled = shownBills.reduce((s, p) => s + Number(p.total || 0), 0);
     const sPaid = shownBills.reduce((s, p) => s + Number(p.amountPaid || 0), 0);
     const sPending = sBilled - sPaid;
+    // Open bills of this supplier in pay order (drafts are not bills yet). A lump sum covers all of them.
+    const lumpBills = supplierPurchases
+      .filter((p) => p.status !== "Draft")
+      .map((p) => ({ id: p.id, number: p.billNumber || "—", date: p.billDate, pending: Number(p.total || 0) - Number(p.amountPaid || 0) }))
+      .filter((b) => b.pending > 0)
+      .sort(oldestFirst);
 
     return (
       <div className="space-y-6">
@@ -282,6 +313,10 @@ export default function PurchasesPage() {
               <CardTitle>Supplier Bills ({supplierPurchases.length})</CardTitle>
               <p className="text-xs text-muted-foreground mt-1">Click on any bill or &quot;Pay Bill&quot; to record cash/bank payments to {supplierData.name}.</p>
             </div>
+            <Button variant="outline" className="border-emerald-500 text-emerald-600 hover:bg-emerald-50 shrink-0" onClick={() => setLumpOpen(true)}
+              disabled={lumpBills.length === 0} title="One amount, applied to the oldest bill first">
+              <Banknote className="h-4 w-4" /> Pay lump sum
+            </Button>
           </CardHeader>
           <CardContent>
             {supplierPurchases.length === 0 ? (
@@ -332,58 +367,17 @@ export default function PurchasesPage() {
 
         {/* Supplier Passbook Statement (Credit & Debit) */}
         {(() => {
-          const supplierTimeline = [];
-          supplierPurchases.forEach(p => {
-            // Purchase Bill (Credit - We Owe Supplier)
-            supplierTimeline.push({
-              id: `pur-${p.id}`,
-              rawBill: p,
-              date: p.billDate || p.createdAt,
-              refNo: p.billNumber || "BILL",
-              particulars: `Purchase Bill from ${p.supplierName}`,
-              udhar: Number(p.total || 0),
-              jama: 0,
-              type: "PURCHASE_BILL"
-            });
-
-            // Payments Paid (Debit - Money Paid Out to Supplier)
-            if (Array.isArray(p.payments) && p.payments.length > 0) {
-              p.payments.forEach(pay => {
-                supplierTimeline.push({
-                  id: `pay-${pay.id}`,
-                  rawBill: p,
-                  date: pay.date || pay.createdAt,
-                  refNo: p.billNumber || "RECEIPT",
-                  particulars: `Payment Paid (${pay.method || "Cash"}) - ${pay.notes || "Bill Settlement"}`,
-                  udhar: 0,
-                  jama: Math.abs(Number(pay.amount || 0)),
-                  type: "PAYMENT_PAID"
-                });
-              });
-            } else if (Number(p.amountPaid || 0) > 0) {
-              supplierTimeline.push({
-                id: `pay-total-${p.id}`,
-                rawBill: p,
-                date: p.billDate || p.createdAt,
-                refNo: p.billNumber || "RECEIPT",
-                particulars: `Payment Paid (${p.paymentMethod || "Cash"})`,
-                udhar: 0,
-                jama: Number(p.amountPaid),
-                type: "PAYMENT_PAID"
-              });
-            }
-          });
-
-          supplierTimeline.sort((a, b) => new Date(a.date) - new Date(b.date));
-
-          let runningPayable = 0;
-          const supplierStatement = supplierTimeline.map(item => {
-            runningPayable += (item.udhar - item.jama);
-            return {
-              ...item,
-              runningBalance: Math.max(0, runningPayable)
-            };
-          }).reverse();
+          // Newest first, as the passbook lists them. Corrections (negative payments) show in the Credit column.
+          const supplierStatement = [...passbookLines].reverse().map((e) => ({
+            date: e.date,
+            refNo: e.refNo,
+            particulars: e.particulars,
+            type: e.debit > 0 || e.credit < 0 ? "PURCHASE_BILL" : "PAYMENT_PAID",
+            udhar: e.debit > 0 ? e.debit : Math.max(0, -e.credit),
+            jama: Math.max(0, e.credit),
+            runningBalance: e.balance,
+            rawBill: supplierPurchases.find((p) => (p.billNumber || "—") === e.refNo) || null
+          }));
 
           return (
             <Card className="border-indigo-100">
@@ -444,6 +438,15 @@ export default function PurchasesPage() {
           );
         })()}
 
+        <LumpSumDialog
+          open={lumpOpen}
+          onClose={() => setLumpOpen(false)}
+          title={`Pay ${supplierData.name} — lump sum`}
+          verb="Paid"
+          bills={lumpBills}
+          onSubmit={(amount, method) => paySupplierLump(supplierData.name, amount, method)}
+        />
+
         {/* We reuse the exact same Payment Modal here */}
         {renderPaymentModal()}
       </div>
@@ -454,12 +457,12 @@ export default function PurchasesPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
           <h1 className="text-2xl font-semibold">Purchases & Suppliers</h1>
           <p className="text-sm text-muted-foreground">Manage your vendors, supplier bills, and payables.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Link href="/purchase/ai-upload">
             <Button variant="outline"><Sparkles className="h-4 w-4 mr-1" />AI upload</Button>
           </Link>
@@ -557,9 +560,9 @@ export default function PurchasesPage() {
             ) : (
               filteredSuppliers.map((s) => (
                 <Card 
-                  key={s.name} 
+                  key={s.key} 
                   className="flex flex-col hover:border-primary/60 hover:shadow-md transition-all shadow-sm cursor-pointer group"
-                  onClick={() => setSelectedSupplierName(s.name)}
+                  onClick={() => setSelectedSupplierName(s.key)}
                 >
                   <CardHeader className="p-4 pb-3 border-b bg-muted/10">
                     <div className="flex items-start gap-3">
@@ -575,7 +578,7 @@ export default function PurchasesPage() {
                     <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground">Total Paid</span><span className="font-medium text-emerald-600">{formatINR(s.totalPaid)}</span></div>
                     <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground">Pending</span><span className="font-medium text-red-600">{formatINR(s.totalPending)}</span></div>
                     <div className="mt-auto pt-3">
-                      <Button variant="outline" className="w-full h-8 text-xs bg-muted/30 group-hover:bg-primary group-hover:text-primary-foreground transition-colors" onClick={(e) => { e.stopPropagation(); setSelectedSupplierName(s.name); }}>
+                      <Button variant="outline" className="w-full h-8 text-xs bg-muted/30 group-hover:bg-primary group-hover:text-primary-foreground transition-colors" onClick={(e) => { e.stopPropagation(); setSelectedSupplierName(s.key); }}>
                         <FileText className="h-3.5 w-3.5 mr-1.5" /> View Ledger ({s.purchases.length})
                       </Button>
                     </div>

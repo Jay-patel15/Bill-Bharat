@@ -59,6 +59,29 @@ Reports → Party ledger. Choose the party, then the bills to include: *All*, or
 - The on-screen table is always the combined table.
 - Date range (*From* / *To*) applies to both layouts. Bills dated before *From* carry their balance forward as the opening balance.
 
+### Receiving or paying a lump sum
+
+Use this when one amount settles several bills of the same customer or supplier.
+
+- **Customer:** open the customer and press **Receive lump sum**. **Supplier:** under **Purchases**, open the supplier and press **Pay lump sum**.
+- Type the amount and choose the payment method. A table shows the split **before** you save: each bill, what it still owes, what this amount takes from it, and whether it is *Cleared*.
+- The amount goes to the **oldest bill first** (bill date, then bill number), then to the next, until it runs out. Bills with nothing owed are skipped.
+- For customers only **Tax Invoices** count (quotations, proformas and challans do not). For suppliers, **draft** bills are skipped.
+- An amount **above the total still owed is refused**. Nothing is recorded; the dialog says so and the button stays disabled.
+- Each bill that receives money gets **its own payment row**, noted *Part of lump sum of ₹…* and dated today. These rows appear in each bill's Payment History, the customer's *Payments received* list, the supplier passbook and the party ledger, and each bill's status updates.
+- The whole lump sum is saved in one step. If any part fails, nothing is saved.
+- There is no date or reference-number field yet: the payment date is today.
+
+### Print preview and saving PDFs
+
+- **Print / Save PDF** on an invoice (and on the invoice rows in *Sales / Invoices* and on a customer's page) opens a **print preview** instead of printing at once. Ctrl+P and the desktop app's *File → Print* open the same preview.
+- The party ledger PDF and the outstanding statement PDF open the same preview.
+- In the preview:
+  - **Print** sends the document to the printer.
+  - **Save as…** lets you choose the folder and file name. In the desktop app this is the Windows Save As dialog. In Chrome or Edge it is the browser's save picker. Other browsers use their normal download, which goes to their download folder unless they are set to ask.
+  - **Close** (or Esc) leaves without printing or saving.
+- The old **Save PDF** button, which kept a copy inside the app's data folder without asking where, has been removed. Use **Save as…** to keep a copy.
+
 ### Changing a payment
 
 - **Edit** on a payment in *Payment History* loads it into the *Record Payment* box: amount, payment method and notes. Change them and press **Save Payment Changes**; *Cancel edit* leaves it as it was.
@@ -78,9 +101,11 @@ Reports → Party ledger. Choose the party, then the bills to include: *All*, or
 ### Stock and the low-stock warning
 
 - Each sale takes stock out, each purchase puts stock in, and deleting or editing a sale or purchase reverses its stock. Electrical Works parts count as stock used (see *Electrical Works and consumables*).
-- **Low-stock warning:** each item has a **Low stock threshold** (Inventory → the item → *Low stock threshold*). The warning shows when stock is **at or below** the threshold **and** the threshold is above 0.
+- **Low-stock warning:** each item has a **Low stock threshold** (Inventory → the item → *Low stock threshold*). The warning shows when stock is **at or below** the item's alert level.
+  - The alert level is the item's own threshold. An item whose threshold is **0** uses the company default set in **Settings → Low stock alert**.
+  - The default starts at 0, which means no alert for those items.
   - Equal counts as low: threshold 5, stock 5 → low.
-  - Threshold 0 (the default) turns the warning off for that item.
+  - Threshold 0 on the item means *use the company default*. If the company default is also 0, no warning shows.
   - Negative stock with a threshold above 0 also counts as low.
 - The warning appears in the **Low stock** card on the dashboard (up to 10 items) and as the low-stock flag on the inventory list. It is worked out when those screens load, not when you save.
 - The stock report (Excel) shows *LOW STOCK*, or *NEGATIVE STOCK* for negative quantities, in its status column.
@@ -142,6 +167,7 @@ Dates print as dd/mm/yyyy. **Long bills continue automatically:** each full page
 |---|---|
 | **Company details** | Company name, GSTIN, PAN, phone, email, logo, address, city, pincode, state, **bank name, branch, account number, IFSC**, terms. Saved changes apply to every invoice printed afterwards. *All companies* lists, adds and switches companies. |
 | **Invoice template** | *Invoice number format* (see below). Turn each part of the invoice on or off and rename its label; upload the logo; tagline lines; declaration; terms; reverse charge Yes/No. Live A4 preview on the right; tick *Preview a long bill* to see page 2. *Reset to default* restores the standard layout. Saved per company. |
+| **Low stock alert** | The company's default low-stock level, in units. An item with no threshold of its own uses it; an item's own threshold always wins. `0` (the starting value) turns the default off. The page shows the current value; negative numbers are refused. |
 | **Terms & Conditions** | One term per line; printed numbered (1., 2., 3.…) at the foot of every invoice. Same text as in Company details and the template editor. |
 | **Backup & Restore** | *Extra backup folders*: up to 5 folders (one per line) that get a copy of every backup; *Save folders* tests that each can be written and makes a first copy. *Back up now* backs up to the backups folder and every extra folder. *Download a copy* saves one `.db` file wherever you choose. *Restore from file…* checks the file and saves the current books before replacing them. See [Keeping backups safe](#keeping-backups-safe-windows-crash-or-drive-reset). |
 | **Updates** | *Check for updates* (desktop app only; a browser shows a note instead of the button). It asks GitHub for the newest published release. If that release is newer than this version, it asks you to confirm, downloads the installer, installs it silently and restarts BillBharat. Your books are not changed: the server copies them to the backups folder first when a new version starts. This is the only time the app contacts the internet for updates. The portable exe cannot update itself. How releases are published: section 6, *Releasing an update*. |
@@ -239,6 +265,7 @@ scripts/
   check-db.mjs            self-check (npm run check)
 services/ai/gemini_service.js   internet-using code: key vault + bill OCR (AI reader)
 electron/main.js registerUpdater  update check and install from GitHub (electron-updater), only on the Settings button; preload.js exposes it to the page
+electron/main.js registerPdfSave  Save As dialog for PDFs (IPC pdf:save); preload.js exposes it as window.billbharatDesktop.savePdf
 lib/
   db/sqlite.js            connection, pragmas, migration runner, snapshot/restore, transaction()
   db/schema.js            versioned migrations (tracked in _schema_migrations)
@@ -246,6 +273,10 @@ lib/
   accounting.js           ledger postings: sales, purchases, payments (addPayment)
   sales.js                sale totals (priceSale) and editing an unpaid invoice (editSale)
   consumables.js          Electrical Works parts: checks, and stock moves on sale, edit and delete
+  payments.js             payment arithmetic (received, pending, room left) and the lump-sum split: allocateLumpSum, oldestFirst, supplierKey
+  lump.js                 lump-sum payment: pays the oldest bills first in one transaction, one payment row per bill (through addPayment)
+  stock.js                low-stock rule (own threshold, else the company default), shared by server and screens
+  low-stock.js            server side of the low-stock default (reads the setting)
   gst.js                  GST engine, amount in words
   gst-export.js           GSTR-1 JSON
   outstanding.js          outstanding statement and party ledger
@@ -259,6 +290,7 @@ app/(app)                 dashboard, customers, inventory, sales, purchase, repo
 app/api                   one folder per resource; every route uses withUser + assertCompanyAccess
 components/               shell, sidebar, topbar, keyboard shortcuts, quick-create, item-search,
                           company/purchase forms, logo upload, ui/*
+                          pdf-preview (print preview and Save as), lump-sum-dialog (lump-sum payment), app-shell with the phone menu drawer (sidebar, topbar)
 ```
 
 ### Accounting model
@@ -365,7 +397,8 @@ Building the `.exe` is described in [README.md](README.md#build-the-windows-exe)
 - **Every release needs a higher `version` in `package.json`.** The update check ignores a release that is not newer, and the pre-update backup is named after the old version.
 - **Dependencies:** `electron-updater` is the only library added for updates. Do not add another updater without removing it.
 - **A new dependency used by the desktop shell** (`electron/`) must also be listed in `build.files` in `package.json`, with its runtime dependencies. The installer excludes `node_modules` by default. Version 1.0.1 crashed on start because this was missing. After any change, build with `npm run dist:dir` and check that `dist/win-unpacked/resources/app/node_modules/<package>` exists.
-- **Run the self-checks** before a release: `node scripts/test-payment-edit.mjs`, `node scripts/test-party-ledger-bills.mjs`, `node scripts/test-gst-payments.mjs`, `node scripts/test-sale-edit.mjs`, `node scripts/test-consumables.mjs`, `node scripts/test-back.mjs`.
+- **Run the self-checks** before a release (each prints a pass line or throws):
+  `node scripts/test-payment-edit.mjs`, `node scripts/test-party-ledger-bills.mjs`, `node scripts/test-gst-payments.mjs`, `node scripts/test-sale-edit.mjs`, `node scripts/test-consumables.mjs`, `node scripts/test-back.mjs`, `node scripts/test-lump-sum.mjs`, `node scripts/test-low-stock.mjs`, and `npm run check`.
 
 ---
 
@@ -405,6 +438,39 @@ The Daily Book (cash book), the expense manager, the manual cash vouchers and th
 ---
 
 ## 10. Changes
+
+### Version 1.0.5
+
+**Added**
+
+- **Lump-sum payments** on a customer (*Receive lump sum*) and on a supplier (*Pay lump sum*). One amount settles the oldest bills first, the split is shown before saving, each bill gets its own payment row, and an amount above what is owed is refused. See *Receiving or paying a lump sum*. Routes: `POST /api/customers/[id]/lump-payment` and `POST /api/purchases/lump-payment`. Logic: `lib/lump.js`, with `allocateLumpSum` and `oldestFirst` in `lib/payments.js`.
+- **Print preview** for invoices, the party ledger PDF and the outstanding PDF, with **Print** and **Save as…** (`components/pdf-preview.jsx`). In the desktop app, Save as uses the Windows Save As dialog (IPC `pdf:save`, exposed as `window.billbharatDesktop.savePdf`).
+- **Low stock alert default** in **Settings** (`GET/PUT /api/settings/low-stock`). Items whose own threshold is 0 use it. The rule is in `lib/stock.js` and is used by the dashboard, the inventory list, the inventory export and the item form.
+- **Phone and small-tablet menu:** a menu button opens the navigation as a drawer. It closes on Escape, on the backdrop, and after a page is picked.
+- **Supplier passbook from the party ledger:** one line per bill and per payment with a running balance, so a split payment shows each part.
+- **Self-checks:** `scripts/test-lump-sum.mjs`, `scripts/test-low-stock.mjs`.
+
+**Changed**
+
+- **Save PDF button removed** from the invoice page. It kept a copy in the app's data folder without asking where. Use **Save as…** in the print preview.
+- **Supplier grouping** ignores case and surrounding spaces, the same as the ledger and the outstanding report: "ABC Traders" and "abc traders " are one supplier. The supplier passbook hides draft bills, which are not payable yet.
+- **Top bar:** labels shrink on small screens, the company list closes on Escape and on an outside click, and *New Invoice* is a single link (it was a button inside a link).
+- **Sidebar** runs the full height of the window on desktop.
+
+**Fixed (layout, found by a UI audit at 1440, 768 and 375 px)**
+
+- The sidebar background stopped partway down the page.
+- Phones had no navigation.
+- Pages wider than a phone screen: sale detail totals and items, Settings cards, sales report summary tiles, finance tiles on tablets, the purchases header, and the action buttons on customer and sale pages.
+- Buttons wrapping onto two lines (for example *New invoice* and *Print / Save PDF*).
+- The keyboard-shortcut bar covering content on phones (now shown from the desktop width up).
+- Inventory and sales tables: HSN, Unit, Subtotal and Tax columns hide below the tablet width so the name column stays readable.
+- Dashboard low-stock numbers (`≤ 5`) wrapped onto three lines.
+
+**Not changed in this release**
+
+- There is still no dark theme. The app only defines light colours.
+- The update button still only works in the installed desktop app; the portable exe cannot update itself.
 
 ### Version 1.0.4
 

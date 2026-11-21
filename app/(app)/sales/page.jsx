@@ -12,6 +12,7 @@ import { Badge, StatusBadge } from "@/components/ui/badge";
 import { api, useCompany } from "@/components/company-context";
 import { formatINR, formatDate, DOCUMENT_TYPES } from "@/lib/utils";
 import { NoCompanySelected } from "@/components/empty-state";
+import { PdfPreview } from "@/components/pdf-preview";
 
 export default function SalesPage() {
   const { active } = useCompany();
@@ -21,6 +22,8 @@ export default function SalesPage() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [showCreate, setShowCreate] = useState(false);
+  // Print preview of one invoice PDF: { src, name } while open.
+  const [preview, setPreview] = useState(null);
 
   useEffect(() => {
     if (active?.id) api("/api/sales").then(setList).catch(() => setList([]));
@@ -82,8 +85,8 @@ export default function SalesPage() {
             <Table>
               <THead><TR>
                 <TH>Number</TH><TH>Type</TH><TH>Date</TH>
-                <TH className="text-right">Subtotal</TH>
-                <TH className="text-right">Tax</TH><TH className="text-right">Total</TH>
+                <TH className="hidden md:table-cell text-right">Subtotal</TH>
+                <TH className="hidden md:table-cell text-right">Tax</TH><TH className="text-right">Total</TH>
                 <TH>Status</TH><TH /></TR></THead>
               <VirtualTBody items={filtered} colSpan={8}>
                 {(s) => {
@@ -93,23 +96,16 @@ export default function SalesPage() {
                       <TD className="font-medium" onClick={() => router.push(`/sales/${s.id}`)}>{s.invoiceNumber}</TD>
                       <TD onClick={() => router.push(`/sales/${s.id}`)}><Badge variant="outline">{s.documentType || "Tax Invoice"}</Badge></TD>
                       <TD onClick={() => router.push(`/sales/${s.id}`)}>{formatDate(s.invoiceDate)}</TD>
-                      <TD className="text-right" onClick={() => router.push(`/sales/${s.id}`)}>{formatINR(s.subtotal)}</TD>
-                      <TD className="text-right" onClick={() => router.push(`/sales/${s.id}`)}>{formatINR(tax)}</TD>
+                      <TD className="hidden md:table-cell text-right" onClick={() => router.push(`/sales/${s.id}`)}>{formatINR(s.subtotal)}</TD>
+                      <TD className="hidden md:table-cell text-right" onClick={() => router.push(`/sales/${s.id}`)}>{formatINR(tax)}</TD>
                       <TD className="text-right font-semibold" onClick={() => router.push(`/sales/${s.id}`)}>{formatINR(s.total)}</TD>
                       <TD onClick={() => router.push(`/sales/${s.id}`)}><StatusBadge status={s.status} /></TD>
                       <TD className="text-right">
-                        <a
-                          href={`/api/sales/${s.id}/pdf`}
-                          target="_blank"
-                          rel="noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          title="Download Invoice PDF"
-                        >
-                          <Button size="sm" variant="outline" className="gap-1.5 px-4">
-                            <FileDown className="h-3.5 w-3.5" />
-                            <span>Download PDF</span>
-                          </Button>
-                        </a>
+                        <Button size="sm" variant="outline" className="gap-1.5 px-4" title="Print preview; save the PDF where you choose"
+                          onClick={(e) => { e.stopPropagation(); setPreview({ src: `/api/sales/${s.id}/pdf`, name: `${s.invoiceNumber || "invoice"}.pdf` }); }}>
+                          <FileDown className="h-3.5 w-3.5" />
+                          <span>Print / Save PDF</span>
+                        </Button>
                       </TD>
                     </TR>
                   );
@@ -119,6 +115,8 @@ export default function SalesPage() {
           )}
         </CardContent>
       </Card>
+
+      <PdfPreview src={preview?.src} fileName={preview?.name} onClose={() => setPreview(null)} />
     </div>
   );
 }

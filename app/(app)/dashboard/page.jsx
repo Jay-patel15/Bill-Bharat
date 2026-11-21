@@ -138,7 +138,7 @@ export default function DashboardPage() {
                 </div>
                 <div className="text-right text-sm">
                   <div className="font-semibold text-amber-600">{i.quantity}</div>
-                  <div className="text-xs text-muted-foreground">≤ {i.lowStockThreshold}</div>
+                  <div className="text-xs text-muted-foreground whitespace-nowrap">≤ {i.alertAt}</div>
                 </div>
               </div>
             ))}

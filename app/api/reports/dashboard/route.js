@@ -1,5 +1,7 @@
 import { fail, ok, withUser } from "@/lib/api";
 import { assertCompanyAccess, getCompanyIdFromRequest, findWhere } from "@/lib/db";
+import { readLowStock } from "@/lib/low-stock";
+import { alertLevel, isLowStock } from "@/lib/stock";
 
 function monthKey(d) {
   if (!d) return "";
@@ -52,9 +54,12 @@ export async function GET(req) {
       }
       const monthly = Object.values(months).sort((a, b) => a.month.localeCompare(b.month)).slice(-12);
 
+      // Items at or under their alert level (own threshold, else the company default), with that level.
+      const defaultLow = await readLowStock(companyId);
       const lowStock = inventory
-        .filter((i) => Number(i.quantity || 0) <= Number(i.lowStockThreshold || 0) && Number(i.lowStockThreshold || 0) > 0)
-        .slice(0, 10);
+        .filter((i) => isLowStock(i, defaultLow))
+        .slice(0, 10)
+        .map((i) => ({ ...i, alertAt: alertLevel(i, defaultLow) }));
 
       return ok({
         totals: {

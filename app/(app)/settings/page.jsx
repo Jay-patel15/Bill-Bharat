@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Building2, FileText, KeyRound, RefreshCw, ScrollText, Tags, Trash2 } from "lucide-react";
+import { AlertTriangle, Building2, FileText, KeyRound, RefreshCw, ScrollText, Tags, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
@@ -223,6 +223,51 @@ function ProductNames() {
   );
 }
 
+/** Company default for the low-stock alert. Items with their own threshold keep it. */
+function LowStockCard() {
+  const toast = useToast();
+  const { active } = useCompany();
+  const [saved, setSaved] = useState(null);
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!active?.id) return;
+    api("/api/settings/low-stock").then((r) => { setSaved(r.threshold); setValue(String(r.threshold)); }).catch(() => {});
+  }, [active?.id]);
+
+  async function save(e) {
+    e.preventDefault();
+    const n = Number(value);
+    if (value.trim() === "" || !Number.isFinite(n) || n < 0) return toast({ type: "error", title: "Enter 0 or more" });
+    setBusy(true);
+    try {
+      const r = await api("/api/settings/low-stock", { method: "PUT", body: JSON.stringify({ threshold: n }) });
+      setSaved(r.threshold);
+      setValue(String(r.threshold));
+      toast({ type: "success", title: "Low stock threshold saved" });
+    } catch (err) {
+      toast({ type: "error", title: "Could not save", message: err.message });
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <Section icon={AlertTriangle} title="Low stock alert" hint="An item is low when its stock is at or below its alert level. Items with no threshold of their own use this value.">
+      <p className="text-sm">
+        Current default: {saved > 0 ? <b>{saved} units</b> : <b className="text-muted-foreground">off (no default alert)</b>}
+      </p>
+      <form onSubmit={save} className="flex flex-wrap items-end gap-2">
+        <label className="text-xs">
+          <span className="block text-muted-foreground mb-1">Default level (units)</span>
+          <Input type="number" min="0" step="any" className="w-40" value={value} onChange={(e) => setValue(e.target.value)} aria-describedby="low-stock-help" />
+        </label>
+        <Button type="submit" size="sm" disabled={busy || value === String(saved ?? "")}>{busy ? "Saving…" : "Save"}</Button>
+      </form>
+      <p id="low-stock-help" className="text-xs text-muted-foreground">Set 0 to turn the default alert off. Per-item thresholds in Inventory still apply.</p>
+    </Section>
+  );
+}
+
 export default function SettingsPage() {
   const toast = useToast();
   const { active } = useCompany();
@@ -241,6 +286,7 @@ export default function SettingsPage() {
         <Section icon={FileText} title="Invoice template" hint="Choose what the GST invoice shows and what each part is called. Live preview.">
           <Link href="/settings/invoice-template"><Button size="sm" variant="outline">Edit invoice template</Button></Link>
         </Section>
+        <LowStockCard />
         <TermsEditor />
         <BackupCard />
         <GeminiKey />

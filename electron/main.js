@@ -260,6 +260,26 @@ function registerUpdater() {
   });
 }
 
+/**
+ * Save a PDF where the user chooses (the native Save As dialog). The page sends the bytes;
+ * nothing is written until the user picks a file.
+ */
+function registerPdfSave() {
+  ipcMain.handle("pdf:save", async (_event, { name, data }) => {
+    const safe = String(name || "document.pdf").replace(/[\/:*?"<>|]/g, "-");
+    const options = {
+      defaultPath: path.join(app.getPath("documents"), safe),
+      filters: [{ name: "PDF", extensions: ["pdf"] }]
+    };
+    const { canceled, filePath } = mainWindow
+      ? await dialog.showSaveDialog(mainWindow, options)
+      : await dialog.showSaveDialog(options);
+    if (canceled || !filePath) return { saved: false };
+    await fs.promises.writeFile(filePath, Buffer.from(data));
+    return { saved: true, path: filePath };
+  });
+}
+
 function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     {
@@ -318,6 +338,7 @@ if (!app.requestSingleInstanceLock()) {
     app.setAppUserModelId("com.billbharat.desktop");
     buildMenu();
     registerUpdater();
+    registerPdfSave();
     lockDownNetwork();
     createWindow();
     try {
