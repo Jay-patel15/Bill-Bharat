@@ -143,7 +143,8 @@ On the invoice page:
   > Dear *customer*, your invoice generated on 27-Feb-23, Invoice No 1462/22-23, Amount 9,086.00 Dr, *company name*, Regards.
 
 - **In a browser or on a phone** with a share sheet, the PDF is attached directly: pick WhatsApp, Gmail or any app.
-- **In the desktop app** (BillBharat.exe) the PDF is saved to your **Downloads** folder, and WhatsApp (or your mail app) opens with the message. Attach the downloaded PDF to that message. Windows cannot attach a file to a WhatsApp link by itself.
+- **WhatsApp in the desktop app** (BillBharat.exe): WhatsApp cannot take a file from a link, so the app does this instead: it saves the PDF to `Downloads\BillBharat\<invoice number>.pdf`, copies that file to the Windows clipboard, opens the WhatsApp chat with the message filled in, and opens the folder with the PDF selected. In the chat press **Ctrl+V** to paste the PDF, then send. If it does not paste, drag the highlighted file from the folder into the chat. The toast tells you which of the two happened (*PDF copied* or *PDF saved*). Pasting depends on the WhatsApp app or web page accepting a pasted file, so check it once on your PC.
+- **Email in the desktop app** still saves the PDF to **Downloads** and opens a mail draft; attach the saved PDF to it.
 - A 10-digit Indian mobile number gets `91` added for WhatsApp.
 
 ### The invoice PDF
@@ -273,6 +274,7 @@ lib/
   accounting.js           ledger postings: sales, purchases, payments (addPayment)
   sales.js                sale totals (priceSale) and editing an unpaid invoice (editSale)
   consumables.js          Electrical Works parts: checks, and stock moves on sale, edit and delete
+  whats-new.js            release notes for the update popup; decides when to show it (whatsNewState)
   payments.js             payment arithmetic (received, pending, room left) and the lump-sum split: allocateLumpSum, oldestFirst, supplierKey
   lump.js                 lump-sum payment: pays the oldest bills first in one transaction, one payment row per bill (through addPayment)
   stock.js                low-stock rule (own threshold, else the company default), shared by server and screens
@@ -290,7 +292,7 @@ app/(app)                 dashboard, customers, inventory, sales, purchase, repo
 app/api                   one folder per resource; every route uses withUser + assertCompanyAccess
 components/               shell, sidebar, topbar, keyboard shortcuts, quick-create, item-search,
                           company/purchase forms, logo upload, ui/*
-                          pdf-preview (print preview and Save as), lump-sum-dialog (lump-sum payment), app-shell with the phone menu drawer (sidebar, topbar)
+                          pdf-preview (print preview and Save as), lump-sum-dialog (lump-sum payment), app-shell with the phone menu drawer (sidebar, topbar), whats-new (thank-you popup after an update)
 ```
 
 ### Accounting model
@@ -397,8 +399,9 @@ Building the `.exe` is described in [README.md](README.md#build-the-windows-exe)
 - **Every release needs a higher `version` in `package.json`.** The update check ignores a release that is not newer, and the pre-update backup is named after the old version.
 - **Dependencies:** `electron-updater` is the only library added for updates. Do not add another updater without removing it.
 - **A new dependency used by the desktop shell** (`electron/`) must also be listed in `build.files` in `package.json`, with its runtime dependencies. The installer excludes `node_modules` by default. Version 1.0.1 crashed on start because this was missing. After any change, build with `npm run dist:dir` and check that `dist/win-unpacked/resources/app/node_modules/<package>` exists.
+- **Add the release notes.** For every release, add an entry to `WHATS_NEW` in `lib/whats-new.js` (a list of short sentences). The popup shows them after the update. A version without an entry shows a generic thank-you.
 - **Run the self-checks** before a release (each prints a pass line or throws):
-  `node scripts/test-payment-edit.mjs`, `node scripts/test-party-ledger-bills.mjs`, `node scripts/test-gst-payments.mjs`, `node scripts/test-sale-edit.mjs`, `node scripts/test-consumables.mjs`, `node scripts/test-back.mjs`, `node scripts/test-lump-sum.mjs`, `node scripts/test-low-stock.mjs`, and `npm run check`.
+  `node scripts/test-payment-edit.mjs`, `node scripts/test-party-ledger-bills.mjs`, `node scripts/test-gst-payments.mjs`, `node scripts/test-sale-edit.mjs`, `node scripts/test-consumables.mjs`, `node scripts/test-back.mjs`, `node scripts/test-lump-sum.mjs`, `node scripts/test-low-stock.mjs`, `node scripts/test-whats-new.mjs`, and `npm run check`.
 
 ---
 
@@ -438,6 +441,22 @@ The Daily Book (cash book), the expense manager, the manual cash vouchers and th
 ---
 
 ## 10. Changes
+
+### Version 1.0.6
+
+**Added**
+
+- **"Thanks for updating" popup.** After an update, the first start shows *Thanks for updating to BillBharat X.Y.Z!* with what the new version added. It shows once per version; *Got it*, Esc or a click outside all count as seen. Logic: `whatsNewState` and `isNewer` in `lib/whats-new.js` (self-check `scripts/test-whats-new.mjs`). Route: `GET/POST /api/app/whats-new`. The seen version is stored in the books (setting `whats_new_seen_version`), not in the browser, because the desktop app's port changes on every start. A new install with no companies is marked seen silently, so it is not greeted by the popup.
+
+**Changed**
+
+- **WhatsApp in the desktop app now carries the PDF.** Before, it saved the PDF to Downloads and opened WhatsApp with only the message. Now the PDF is also copied to the Windows clipboard as a file (paste with Ctrl+V in the chat) and its folder is opened so it can be dragged in. The Electron side is `registerPdfShare` in `electron/main.js` (IPC `pdf:share`), exposed to the page as `window.billbharatDesktop.sharePdf`. The copy uses PowerShell `Set-Clipboard -Path` with the path in an environment variable, so no path text reaches a command line. The clipboard copy is Windows-only.
+- Phones and browsers with a share sheet are unchanged: the PDF is attached directly with the message.
+- Email in the desktop app is unchanged.
+
+**Note for maintainers**
+
+- A packaged build must be made with `npm run build` (or `npm run dist:dir` / `npm run release`), not `next build` alone. `scripts/prepare-standalone.mjs` copies the static assets into the package; without it every `/_next` file returns 404 and the window shows unstyled pages with no company loaded.
 
 ### Version 1.0.5
 

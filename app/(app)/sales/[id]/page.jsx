@@ -125,6 +125,23 @@ export default function SaleDetailPage({ params }) {
     const subject = `Invoice No ${sale.invoiceNumber}`;
     const body = invoiceMessage({ sale, partyName: customer?.name || "Customer", companyName: active?.name || "" });
 
+    // The desktop app cannot attach a file to a WhatsApp link. It saves the PDF, copies it to the
+    // clipboard as a file and opens the chat; the user pastes it (Ctrl+V) or drags it in.
+    if (channel === "whatsapp" && window.billbharatDesktop?.sharePdf) {
+      try {
+        const r = await window.billbharatDesktop.sharePdf(file.name, await file.arrayBuffer());
+        window.open(`https://wa.me/${whatsappNumber(customer?.phone)}?text=${encodeURIComponent(body)}`, "_blank");
+        toast({
+          type: "success",
+          title: r.copied ? "PDF copied: press Ctrl+V in the WhatsApp chat" : "PDF saved: drag it into the WhatsApp chat",
+          message: r.copied ? "If it does not paste, drag the highlighted file from the folder that opened." : r.path
+        });
+      } catch (e) {
+        toast({ type: "error", title: "Could not prepare the PDF", message: e.message });
+      }
+      return;
+    }
+
     // The desktop app never uses the share sheet: its native sheet can stay open with no way to finish.
     const desktopApp = /Electron\//.test(navigator.userAgent);
     if (!desktopApp && navigator.canShare?.({ files: [file] })) {

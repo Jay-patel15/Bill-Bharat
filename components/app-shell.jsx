@@ -6,6 +6,7 @@ import { Topbar } from "./topbar";
 import { KeyboardShortcuts, VOUCHER_KEYS } from "./keyboard-shortcuts";
 import { QuickCreate } from "./quick-create";
 import { BackupReminder } from "./backup-card";
+import { WhatsNew } from "./whats-new";
 
 export function AppShell({ user, children }) {
   const router = useRouter();
@@ -24,6 +25,7 @@ export function AppShell({ user, children }) {
       <main className="flex-1 min-w-0 flex flex-col">
         <Topbar user={user} menuOpen={menuOpen} onMenu={() => setMenuOpen((s) => !s)} />
         <BackupReminder />
+        <WhatsNew />
         <div className="flex-1 min-h-0 p-4 sm:p-5 max-w-screen-2xl w-full mx-auto overflow-x-auto">
           {children}
         </div>

@@ -80,7 +80,8 @@ On the invoice, press **WhatsApp** or **Email**. The PDF goes with a short messa
 > Dear Siddhi Electricals, your invoice generated on 27-Feb-23, Invoice No 1462/22-23, Amount 9,086.00 Dr, *your company*, Regards.
 
 - In a browser or on a phone, the PDF is attached for you. Pick WhatsApp or Gmail.
-- In the **BillBharat desktop app**, the PDF is saved to your **Downloads** folder and WhatsApp (or your mail app) opens with the message. Attach the saved PDF yourself.
+- In the **BillBharat desktop app**, press **WhatsApp**. The PDF is saved to **Downloads\BillBharat**, copied so you can paste it, and the folder opens with the PDF selected. WhatsApp opens with the message. In the chat press **Ctrl+V** to paste the PDF, then send. If it does not paste, drag the highlighted PDF from the folder into the chat.
+- For **Email** in the desktop app, the PDF is saved to **Downloads** and a mail draft opens; attach the saved PDF to it.
 
 **Print or keep a copy.** *Print / Save PDF* on an invoice (or on the invoice rows in *Sales / Invoices* and on a customer's page) opens a **print preview**. Press **Print** to print, or **Save as…** to keep a copy in the folder you choose. The party ledger and outstanding PDFs open the same preview.
 
@@ -172,6 +173,8 @@ Open **Settings** from the left menu.
 ---
 
 ## 14. Updating BillBharat
+
+After an update, the first start shows a short **Thanks for updating** message with what the new version added. Press **Got it** to close it; it does not come back for that version.
 
 When a new version is published, you can install it yourself. Your books are kept.
 

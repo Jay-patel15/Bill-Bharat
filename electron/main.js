@@ -17,7 +17,7 @@
 
 const { app, BrowserWindow, Menu, shell, dialog, session, safeStorage, ipcMain } = require("electron");
 const { autoUpdater } = require("electron-updater");
-const { fork } = require("node:child_process");
+const { execFile, fork } = require("node:child_process");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const http = require("node:http");
@@ -280,6 +280,36 @@ function registerPdfSave() {
   });
 }
 
+/**
+ * WhatsApp cannot take a file from a link. The PDF is saved to Downloads\BillBharat, copied to the
+ * Windows clipboard as a file (paste it into the chat with Ctrl+V), and its folder is opened so it
+ * can also be dragged in. The clipboard copy is Windows-only; elsewhere only the folder opens.
+ */
+function registerPdfShare() {
+  ipcMain.handle("pdf:share", async (_event, { name, data }) => {
+    const safe = String(name || "invoice.pdf").replace(/[\\/:*?"<>|]/g, "-");
+    const dir = path.join(app.getPath("downloads"), "BillBharat");
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, safe);
+    await fs.promises.writeFile(file, Buffer.from(data));
+
+    let copied = false;
+    if (process.platform === "win32") {
+      // The path goes in an environment variable, not the command line, so no quoting can break it.
+      copied = await new Promise((resolve) => {
+        execFile(
+          "powershell.exe",
+          ["-NoProfile", "-NonInteractive", "-STA", "-Command", "Set-Clipboard -Path $env:BB_PDF"],
+          { env: { ...process.env, BB_PDF: file }, windowsHide: true, timeout: 20000 },
+          (err) => resolve(!err)
+        );
+      });
+    }
+    shell.showItemInFolder(file);
+    return { path: file, copied };
+  });
+}
+
 function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     {
@@ -339,6 +369,7 @@ if (!app.requestSingleInstanceLock()) {
     buildMenu();
     registerUpdater();
     registerPdfSave();
+    registerPdfShare();
     lockDownNetwork();
     createWindow();
     try {
