@@ -2,7 +2,7 @@ import { fail, ok, readBody, withUser } from "@/lib/api";
 import { assertCompanyAccess, getCompanyIdFromRequest, findById, findOne, findWhere, insert, transaction, getSetting } from "@/lib/db";
 import { checkConsumables, moveStock } from "@/lib/consumables";
 import { mergeTemplate, templateKey } from "@/lib/invoice-template";
-import { priceSale, syncSellingRates } from "@/lib/sales";
+import { priceSale, syncSellingRates, quoteStatusFor, quoteToConvert, markConverted } from "@/lib/sales";
 import { getDocumentType, nextInvoiceNumber, formatInvoiceNotes, parseInvoiceNotes, localDate } from "@/lib/utils";
 import { recordSaleAccounting, addPayment } from "@/lib/accounting";
 import { saleSchema } from "@/lib/validations";
@@ -39,6 +39,9 @@ export async function POST(req) {
 
 
       const docType = getDocumentType(data.documentType || "Tax Invoice");
+      // Saving a quotation as an invoice: the quotation is marked Converted in the same transaction below.
+      const fromQuote = body.convertFromId ? await quoteToConvert(body.convertFromId, companyId) : null;
+      if (fromQuote && docType.value !== "Tax Invoice") return fail("A quotation converts to a Tax Invoice", 400);
       const computed = priceSale({ company, customer, docType, items: data.items || [], discount: data.discount || 0 });
 
       for (const it of computed.items) {
@@ -79,12 +82,13 @@ export async function POST(req) {
           igst: computed.igst,
           total: computed.grandTotal,
           // Bills take their paid amount from payment rows (below); other documents keep the figure as typed.
-          amountPaid: docType.affectsOutstanding ? 0 : paidNow,
-          status: docType.affectsOutstanding ? "Unpaid" : (data.status || "Unpaid"),
+          amountPaid: docType.affectsOutstanding || docType.value === "Quotation" ? 0 : paidNow,
+          status: docType.affectsOutstanding ? "Unpaid" : docType.value === "Quotation" ? quoteStatusFor(data.status) : (data.status || "Unpaid"),
           notes: finalNotes,
           pdfUrl: ""
         });
 
+        if (fromQuote) await markConverted(fromQuote, created.id, user.id);
         if (docType.affectsStock) await moveStock(companyId, computed.items, -1, user.id);
         if (docType.value === "Tax Invoice") await syncSellingRates(companyId, computed.items, user.id);
 

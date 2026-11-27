@@ -1,23 +1,9 @@
 import { fail, withUser } from "@/lib/api";
-import fs from "node:fs";
 import { assertCompanyAccess, findById, getSetting, update } from "@/lib/db";
 import { generateInvoicePdf } from "@/lib/pdf";
-import { resolveStoragePath, uploadFile } from "@/lib/storage/local";
-import { templateKey } from "@/lib/invoice-template";
-
-/** Company logo from the data folder as a data URL jsPDF can embed (PNG/JPEG only). */
-function loadLogo(logoUrl) {
-  const id = String(logoUrl || "").replace(/^\/api\/files\//, "");
-  const ext = id.split(".").pop()?.toLowerCase();
-  const format = ext === "png" ? "PNG" : ext === "jpg" || ext === "jpeg" ? "JPEG" : null;
-  if (!id || !format) return null;
-  try {
-    const data = fs.readFileSync(resolveStoragePath(id)).toString("base64");
-    return { dataUrl: `data:image/${format.toLowerCase()};base64,${data}`, format };
-  } catch {
-    return null; // missing logo file must not block the invoice
-  }
-}
+import { uploadFile } from "@/lib/storage/local";
+import { templateKeyFor } from "@/lib/invoice-template";
+import { loadLogo } from "@/lib/company-logo";
 import { getDocumentType, parseInvoiceNotes } from "@/lib/utils";
 
 export async function GET(req, { params }) {
@@ -31,9 +17,9 @@ export async function GET(req, { params }) {
       if (!customer) return fail("Customer missing", 400);
 
       const items = sale.items || [];
-      let template = null;
-      try { template = JSON.parse((await getSetting(templateKey(sale.companyId))) || "null"); } catch { /* corrupt: defaults */ }
       const docType = getDocumentType(sale.documentType || "Tax Invoice");
+      let template = null;
+      try { template = JSON.parse((await getSetting(templateKeyFor(docType.value, sale.companyId))) || "null"); } catch { /* corrupt: defaults */ }
 
       const { notes: plainNotes, metadata } = parseInvoiceNotes(sale.notes);
 

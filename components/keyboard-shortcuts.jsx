@@ -7,7 +7,10 @@ import { goBack } from "./back-handler";
 /** Keys that open a new sale or purchase. */
 export const VOUCHER_KEYS = {
   F8: { href: "/sales/create-invoice", label: "Sales" },
-  F9: { href: "/purchase/create", label: "Purchase" }
+  F9: { href: "/purchase/create", label: "Purchase" },
+  F7: { href: "/customers", label: "New customer", openForm: true },
+  F6: { href: "/inventory", label: "New item", openForm: true },
+  F4: { href: "/purchase/ai-upload", label: "AI purchase" }
 };
 
 const FIELDS = "input:not([type=hidden]):not([disabled]), select:not([disabled]), textarea:not([disabled]), button[type=submit]:not([disabled])";
@@ -42,6 +45,8 @@ function nextField(el) {
  *   Alt+A  accept (save) the current form          F2   jump to the date field
  *   Alt+C  quick-create a customer, or an item when in an item grid
  *   F8, F9         open a new sale or purchase
+ *   F7, F6         open the new-customer or new-item form on its page
+ *   F4             open the AI purchase reader
  */
 export function KeyboardShortcuts() {
   const router = useRouter();
@@ -52,7 +57,9 @@ export function KeyboardShortcuts() {
 
       if (VOUCHER_KEYS[e.key] && !e.ctrlKey && !e.altKey && !e.metaKey) {
         e.preventDefault();
-        router.push(VOUCHER_KEYS[e.key].href);
+        const k = VOUCHER_KEYS[e.key];
+        // A new value each press, so the page opens its form even when it is already showing.
+        router.push(k.openForm ? `${k.href}?new=${Date.now()}` : k.href);
         return;
       }
 
@@ -62,7 +69,8 @@ export function KeyboardShortcuts() {
         return;
       }
 
-      if (e.altKey && e.key.toLowerCase() === "a") {
+      // e.code (physical key) instead of e.key: Alt+letter gives a different character on some keyboard layouts.
+      if (e.altKey && e.code === "KeyA") {
         // Forms submit; screens without a form mark their save button with data-accept.
         const form = el?.form || document.querySelector("[role=dialog] form") || document.querySelector("main form");
         const accept = form ? null : document.querySelector("main [data-accept]:not([disabled])");
@@ -70,7 +78,7 @@ export function KeyboardShortcuts() {
         return;
       }
 
-      if (e.altKey && e.key.toLowerCase() === "c") {
+      if (e.altKey && e.code === "KeyC") {
         e.preventDefault();
         window.dispatchEvent(new CustomEvent(OPEN_QUICK_CREATE, { detail: { kind: el?.closest?.("[data-grid]") ? "item" : "customer" } }));
         return;

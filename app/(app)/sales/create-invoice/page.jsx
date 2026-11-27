@@ -12,8 +12,9 @@ import { computeInvoice, gstStateFromGstin, GST_SLABS, GST_UNITS, isGstCompany }
 import { formatINR, nextInvoiceNumber, DEFAULT_NUMBER_FORMAT, DOCUMENT_TYPES, getDocumentType, formatInvoiceNotes, parseInvoiceNotes, STATES, localDate } from "@/lib/utils";
 import { NoCompanySelected } from "@/components/empty-state";
 import { ItemSearch } from "@/components/item-search";
-import { MASTER_CREATED } from "@/components/quick-create";
+import { MASTER_CREATED, OPEN_QUICK_CREATE } from "@/components/quick-create";
 import { navReplace } from "@/components/back-handler";
+import { PdfPreview } from "@/components/pdf-preview";
 
 const blankItem = () => ({
   inventoryId: "", name: "", hsnCode: "", quantity: 1,
@@ -22,9 +23,11 @@ const blankItem = () => ({
 
 const blankTransport = {
   challanNumber: "", challanDate: "", orderNumber: "", orderDate: "", lrNumber: "", lrDate: "",
-  transporter: "", ewayNumber: "", paymentTerms: "", consigneeSameAsBuyer: true, consigneeName: "",
+  transporter: "", ewayNumber: "", paymentTerms: "", validTill: "", consigneeSameAsBuyer: true, consigneeName: "",
   consigneeAddress: "", consigneeGst: "", consigneePhone: "", consigneeState: "", consigneeStateCode: ""
 };
+
+const NEW_CUSTOMER = "__new_customer__"; // dropdown option that opens the customer form
 
 export default function CreateInvoicePage() {
   const router = useRouter();
@@ -35,6 +38,8 @@ export default function CreateInvoicePage() {
   const [showCost, setShowCost] = useState(false); // on-screen only: purchase rate and margin, never printed
   // ?edit=<saleId> opens an existing document: same form, saved with PUT. Number and customer stay fixed.
   const editId = search.get("edit") || "";
+  // ?convertFrom=<quotationId> starts a Tax Invoice from that quotation; saving marks the quotation Converted.
+  const convertFrom = search.get("convertFrom") || "";
 
   const [docType, setDocType] = useState(search.get("type") || "Tax Invoice");
   const [customers, setCustomers] = useState([]);
@@ -57,6 +62,10 @@ export default function CreateInvoicePage() {
   const [numberFormat, setNumberFormat] = useState(DEFAULT_NUMBER_FORMAT);
   const [showTransport, setShowTransport] = useState(false);
   const [transport, setTransport] = useState(blankTransport);
+  const [previewing, setPreviewing] = useState(false);
+  const [pdfPreview, setPdfPreview] = useState(null); // { src, name } of the draft's PDF while open
+  const [askItem, setAskItem] = useState(null); // typed item not in stock: { name, hsnCode, unit, sellingPrice, gstRate }
+  const declinedItems = useRef(new Set()); // names the user answered "No" to, so we do not ask again
 
   useEffect(() => {
     if (!active?.id) return;
@@ -90,12 +99,36 @@ export default function CreateInvoicePage() {
     });
   }, [editId, active?.id]);
 
+  // Convert a quotation: fill this new Tax Invoice from it. The number and date are new.
+  useEffect(() => {
+    if (!convertFrom || !active?.id) return;
+    api(`/api/sales/${convertFrom}`).then((q) => {
+      if (q.documentType !== "Quotation" || q.status === "Converted") throw new Error("This quotation cannot be converted");
+      const { notes: plain, metadata } = parseInvoiceNotes(q.notes || "");
+      setDocType("Tax Invoice");
+      setCustomerId(q.customerId || "");
+      setItems(q.items?.length ? q.items : [blankItem()]);
+      setDiscount(Number(q.discount) || 0);
+      setNotes(plain);
+      setTransport({ ...blankTransport, ...metadata });
+    }).catch((e) => {
+      toast({ type: "error", title: "Could not convert", message: e.message });
+      navReplace(router, "/sales");
+    });
+  }, [convertFrom, active?.id]);
+
   // Alt+C quick create: add the new customer/item to the lists (and select a new customer).
   useEffect(() => {
     const added = (e) => {
       const { kind, record } = e.detail;
       if (kind === "customer") { setCustomers((l) => [...l, record]); setCustomerId(record.id); }
-      else setInventory((l) => [...l, record]);
+      else {
+        setInventory((l) => [...l, record]);
+        // Link the invoice row that asked for this item, so its stock is tracked.
+        setItems((arr) => arr.map((it) => !it.inventoryId && it.name?.trim().toLowerCase() === record.name?.trim().toLowerCase()
+          ? { ...it, inventoryId: record.id, name: record.name, hsnCode: record.hsnCode || "", sellingPrice: Number(record.sellingPrice) || 0, gstRate: Number(record.gstRate) || 0, unit: record.unit || "PCS", consumablesUsed: [] }
+          : it));
+      }
     };
     window.addEventListener(MASTER_CREATED, added);
     return () => window.removeEventListener(MASTER_CREATED, added);
@@ -151,6 +184,22 @@ export default function CreateInvoicePage() {
     if (Number(inv.consumables) && docType === "Tax Invoice") openConsumables(i, []);
   }
 
+  // Typed item name that is not in inventory (and not already declined): ask whether to add it.
+  function checkNewItem(i) {
+    const it = items[i];
+    const name = it?.name?.trim();
+    if (!name || it.inventoryId || declinedItems.current.has(name.toLowerCase())) return;
+    const key = name.toLowerCase();
+    if (inventory.some((x) => [x.name, x.sku, x.barcode].some((v) => v?.trim().toLowerCase() === key))) return;
+    setAskItem({ name, hsnCode: it.hsnCode || "", unit: it.unit || "PCS", sellingPrice: it.sellingPrice || "", gstRate: it.gstRate ?? 18 });
+  }
+  function declineAskedItem() { declinedItems.current.add(askItem.name.toLowerCase()); setAskItem(null); }
+  function addAskedItem() {
+    const { name, hsnCode, unit, sellingPrice, gstRate } = askItem;
+    setAskItem(null);
+    window.dispatchEvent(new CustomEvent(OPEN_QUICK_CREATE, { detail: { kind: "item", prefill: { name, hsnCode, unit, sellingPrice: String(sellingPrice), gstRate } } }));
+  }
+
   // Stock items only: the Electrical Works line itself is not a part.
   const stockItems = inventory.filter((x) => !Number(x.consumables));
   // A line whose item was removed still shows its parts so they can be edited.
@@ -178,6 +227,43 @@ export default function CreateInvoicePage() {
     setInvoiceNumber(nextInvoiceNumber(allSales.map((s) => s.invoiceNumber), dt.prefix, numberFormat, invoiceDate));
   }
 
+  /** Builds the PDF of the bill as it is now, for checking. Nothing is saved. */
+  async function previewDraft() {
+    const named = items.filter((i) => i.name);
+    if (!customerId || named.length === 0) return toast({ type: "error", title: "Pick a customer and add an item to preview" });
+    setPreviewing(true);
+    try {
+      const res = await fetch("/api/sales/preview", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          companyId: active.id,
+          customerId,
+          documentType: docType,
+          invoiceNumber: invoiceNumber.trim(),
+          invoiceDate,
+          dueDate,
+          items: named.map((it) => ({ ...it, consumablesUsed: docType === "Tax Invoice" ? it.consumablesUsed || [] : [] })),
+          discount: Number(discount) || 0,
+          notes: formatInvoiceNotes(notes, transport)
+        })
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error || j.message || "Could not build the preview");
+      }
+      const url = URL.createObjectURL(await res.blob());
+      setPdfPreview({ src: url, name: `${invoiceNumber || "preview"}.pdf` });
+    } catch (e) {
+      toast({ type: "error", title: "Could not preview", message: e.message });
+    } finally { setPreviewing(false); }
+  }
+
+  function closePreview() {
+    if (pdfPreview?.src) URL.revokeObjectURL(pdfPreview.src);
+    setPdfPreview(null);
+  }
+
   async function save() {
     if (!customerId) return toast({ type: "error", title: "Pick a customer" });
     // Rows with no item name (the blank row auto-add leaves at the bottom) are not saved.
@@ -198,7 +284,8 @@ export default function CreateInvoicePage() {
             documentType: docType,
             invoiceNumber: invoiceNumber.trim(),
             customerId,
-            amountPaid: Number(amountPaid) || 0
+            amountPaid: Number(amountPaid) || 0,
+            convertFromId: convertFrom || null
           })
         });
       toast({ type: "success", title: editId ? `${docType} updated` : `${docType} created`, message: saved.invoiceNumber });
@@ -228,25 +315,26 @@ export default function CreateInvoicePage() {
         </div>
       </div>
 
-      {/* Doc-type pill bar (fixed when editing) */}
-      {!editId && (
-        <div className="flex flex-wrap gap-2">
-          {DOCUMENT_TYPES.map((t) => (
-            <button
-              key={t.value}
-              onClick={() => setDocType(t.value)}
-              className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
-                docType === t.value
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-background hover:bg-accent"
-              }`}
-            >
-              {t.value}
-              <span className="ml-2 text-[10px] opacity-70">{t.prefix}</span>
-            </button>
-          ))}
-        </div>
-      )}
+      {/* Doc-type pill bar: the open document's type stays highlighted; the type cannot change while editing */}
+      <div className="flex flex-wrap gap-2">
+        {DOCUMENT_TYPES.map((t) => (
+          <button
+            key={t.value}
+            type="button"
+            disabled={!!editId}
+            onClick={() => setDocType(t.value)}
+            aria-pressed={docType === t.value}
+            className={`px-3 py-1.5 rounded-full text-sm border transition-colors disabled:cursor-not-allowed ${
+              docType === t.value
+                ? "bg-primary text-primary-foreground border-primary"
+                : "bg-background hover:bg-accent disabled:hover:bg-background"
+            } ${editId && docType !== t.value ? "opacity-50" : ""}`}
+          >
+            {t.value}
+            <span className="ml-2 text-[10px] opacity-70">{t.prefix}</span>
+          </button>
+        ))}
+      </div>
 
       <div className="space-y-4">
         <Card>
@@ -263,8 +351,11 @@ export default function CreateInvoicePage() {
               </div>
             </Field>
             <Field label="Customer *">
-              <Select disabled={!!editId} value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
+              <Select disabled={!!editId} value={customerId} onChange={(e) => e.target.value === NEW_CUSTOMER
+                ? window.dispatchEvent(new CustomEvent(OPEN_QUICK_CREATE, { detail: { kind: "customer" } }))
+                : setCustomerId(e.target.value)}>
                 <option value="">Select customer…</option>
+                <option value={NEW_CUSTOMER}>+ Add new customer…</option>
                 {customers.map((c) => <option key={c.id} value={c.id}>{c.name}{c.gstNumber ? ` · ${c.gstNumber}` : ""}</option>)}
               </Select>
             </Field>
@@ -272,6 +363,11 @@ export default function CreateInvoicePage() {
             <Field label={dt.value === "Purchase Order" ? "Expected delivery" : "Due date"}>
               <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
             </Field>
+            {dt.value === "Quotation" && (
+              <Field label="Valid till" hint="Printed on the quotation as a note: “This quotation is valid till …”">
+                <Input type="date" value={transport.validTill} onChange={(e) => setTransport({ ...transport, validTill: e.target.value })} />
+              </Field>
+            )}
           </CardContent>
         </Card>
 
@@ -392,6 +488,7 @@ export default function CreateInvoicePage() {
                   items={inventory.filter((x) => Number(x.consumables) !== 2)}
                   onText={(name) => setItem(i, { name, inventoryId: "", consumablesUsed: [] })}
                   onPick={(inv) => pickInventory(i, inv)}
+                  onBlur={() => checkNewItem(i)}
                 />
                 {showCost && (() => {
                   // Linked item, or else a stock item whose name / SKU matches the typed text (typing clears the link).
@@ -509,11 +606,19 @@ export default function CreateInvoicePage() {
                   ? "No GST: add the company GSTIN in Company settings to bill with GST."
                   : (computed.interstate ? "Interstate (IGST)" : "Intrastate (CGST + SGST)")}
             </div>
+            <Button type="button" variant="outline" className="w-full mt-3" onClick={previewDraft} disabled={previewing || saving}>
+              {previewing ? "Building preview…" : `Preview ${docType.toLowerCase()}`}
+            </Button>
             <Button data-accept className="w-full mt-3" onClick={save} disabled={saving || overPaid}>{saving ? "Saving…" : `Save ${docType}`}</Button>
           </CardContent>
         </Card>
       </div>
 
+      <PdfPreview src={pdfPreview?.src} fileName={pdfPreview?.name} onClose={closePreview} />
+      <Dialog open={!!askItem} onClose={declineAskedItem} title="Add to inventory?" size="sm"
+        footer={<><Button variant="outline" onClick={declineAskedItem}>No</Button><Button onClick={addAskedItem}>Yes, add item</Button></>}>
+        <p className="text-sm">&ldquo;{askItem?.name}&rdquo; is not in your inventory. Add it now? The form opens with these details filled in.</p>
+      </Dialog>
       <Dialog open={consumableLine !== null} onClose={() => setConsumableLine(null)} title="Consumables used on Electrical Works" size="lg"
         footer={
           <>

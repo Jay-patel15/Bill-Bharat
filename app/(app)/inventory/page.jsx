@@ -1,6 +1,7 @@
 "use client";
-import { useEffect, useState, useMemo } from "react";
-import { Plus, Pencil, Trash2, GitMerge, Download, AlertTriangle, CheckCircle2, X } from "lucide-react";
+import { useEffect, useRef, useState, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
+import { Plus, Pencil, Trash2, GitMerge, Download, Upload, AlertTriangle, CheckCircle2, X } from "lucide-react";
 import * as XLSX from "xlsx";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,8 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(false);
   // Company default low-stock level from Settings (0 = off); items with their own threshold ignore it.
   const [lowDefault, setLowDefault] = useState(0);
+  const fileInput = useRef(null);
+  const [importResult, setImportResult] = useState(null); // { added, skipped } after a CSV import
 
 
   async function load() {
@@ -46,6 +49,9 @@ export default function InventoryPage() {
     catch { setList([]); }
   }
   useEffect(() => { load(); }, [active?.id]);
+  // F6 opens this page with ?new=<time>: show the new-item form straight away.
+  const urlParams = useSearchParams();
+  useEffect(() => { if (urlParams.get("new")) { setForm(empty); setOpen(true); } }, [urlParams.get("new")]);
 
   // The Electrical Works consumables line is an invoice item, not stock: keep it out of the list and report.
   const stock = list.filter((it) => !Number(it.consumables));
@@ -74,6 +80,21 @@ export default function InventoryPage() {
       setOpen(false); setForm(empty); await load();
     } catch (e) { toast({ type: "error", title: "Save failed", message: e.message }); }
     finally { setLoading(false); }
+  }
+
+  // ── CSV import: the first sheet's header row names the columns; the server checks every row ──
+  async function importCsv(e) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // so choosing the same file again still fires
+    if (!file) return;
+    try {
+      const wb = XLSX.read(await file.text(), { type: "string" });
+      // raw:false keeps the cell text, so codes such as 0123 keep their leading zero.
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "", raw: false });
+      const result = await api("/api/inventory/import", { method: "POST", body: JSON.stringify({ companyId: active.id, rows }) });
+      setImportResult(result);
+      await load();
+    } catch (err) { toast({ type: "error", title: "Import failed", message: err.message }); }
   }
 
   async function onDelete(item) {
@@ -137,6 +158,10 @@ export default function InventoryPage() {
           <Button variant="outline" onClick={downloadStockReport}>
             <Download className="h-4 w-4 mr-1" /> Stock Report
           </Button>
+          <Button variant="outline" onClick={() => fileInput.current?.click()} title="CSV with a name column; sku, barcode, category, hsnCode, unit, purchasePrice, sellingPrice, gstRate, quantity, lowStockThreshold are optional">
+            <Upload className="h-4 w-4 mr-1" /> Import CSV
+          </Button>
+          <input ref={fileInput} type="file" accept=".csv,text/csv" className="hidden" onChange={importCsv} />
           <Button onClick={() => { setForm(empty); setOpen(true); }}>
             <Plus className="h-4 w-4 mr-1" /> New product
           </Button>
@@ -201,6 +226,22 @@ export default function InventoryPage() {
       </Card>
 
       {/* ── Add / Edit Product Dialog ── */}
+      <Dialog open={!!importResult} onClose={() => setImportResult(null)} title="CSV import" size="md"
+        footer={<Button onClick={() => setImportResult(null)}>OK</Button>}>
+        {importResult && (
+          <div className="space-y-3 text-sm">
+            <p><strong>{importResult.added}</strong> product(s) added.{importResult.skipped.length ? <> <strong>{importResult.skipped.length}</strong> row(s) skipped and not added:</> : null}</p>
+            {importResult.skipped.length > 0 && (
+              <ul className="max-h-72 overflow-auto space-y-1 text-xs">
+                {importResult.skipped.map((s) => (
+                  <li key={s.line}>Line {s.line}{s.name ? ` "${s.name}"` : ""}: {s.reason}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </Dialog>
+
       <Dialog open={open} onClose={() => setOpen(false)} title={form.id ? "Edit product" : "New product"} size="lg"
         footer={
           <>

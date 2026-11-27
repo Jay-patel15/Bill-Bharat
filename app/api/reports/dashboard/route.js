@@ -70,11 +70,11 @@ export async function GET(req) {
           payable,
           customers: customers.length,
           inventory: inventory.length,
-          invoices: allSales.length
+          invoices: sales.length
         },
         monthly,
         lowStock,
-        recentSales: [...allSales]
+        recentSales: [...sales]
           .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""))
           .slice(0, 5)
       });

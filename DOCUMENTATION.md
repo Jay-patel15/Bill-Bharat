@@ -147,6 +147,28 @@ On the invoice page:
 - **Email in the desktop app** still saves the PDF to **Downloads** and opens a mail draft; attach the saved PDF to it.
 - A 10-digit Indian mobile number gets `91` added for WhatsApp.
 
+### Quotations
+
+A quotation (QT prefix) is a price offer. It changes no stock, no ledger, no customer balance, and no GST or sales total, and it takes no payment.
+
+- **Create:** pick *Quotation* in the pill bar on the invoice form. Its *Valid till* date appears in the Dates card; it prints as the note *This quotation is valid till DD/MM/YYYY.*
+- **Status:** *Draft*, *Sent* or *Accepted*, set from the dropdown on the quotation page. Those three are the only ones you choose. *Converted* is set when the quotation becomes an invoice.
+- **Edit:** change the items, rates or dates any time until it is converted; the number stays.
+- **Convert to invoice:** opens a new Tax Invoice filled from the quotation, with a new INV number and today's date. Saving it marks the quotation *Converted* and links the two (*Open invoice* on the quotation). A converted quotation cannot be edited; edit the invoice instead. Deleting that invoice reopens the quotation as *Accepted*.
+- **Preview and print:** *Print / Save PDF* on the quotation page, or *Preview quotation* on the form before saving. The preview saves nothing.
+- **Style:** Settings → Invoice templates → *Quotation template* has its own layout and the *Quotation note* (default: *Prices are subject to change with market prices.*), printed on every quotation.
+- **Sending:** WhatsApp and email say *quotation* and *Quotation No*.
+
+### Deleting a document
+
+On an invoice, quotation or delivery challan page, **Delete** removes it. The confirm box says how many payments on it will be removed too (their total shown). Stock is put back, the ledger lines for it are removed, and a quotation that became this invoice reopens as *Accepted*. This cannot be undone; take a backup first if in doubt.
+
+### Importing from CSV
+
+- **Products:** *Inventory → Import CSV*. Columns: `name` (required), `sku`, `barcode`, `category`, `hsnCode`, `unit`, `purchasePrice`, `sellingPrice`, `gstRate`, `quantity`, `lowStockThreshold`. Column names are not case-sensitive and spaces are ignored (`HSN Code` works). Items with a name or SKU already in the books, repeated lines, or bad numbers are skipped and listed with their line numbers. Up to 5,000 rows.
+- **Names only:** Settings → *Product master names* → *Import names from CSV*. The column headed `name`, `product` or `item`, otherwise the first column.
+- Excel-saved CSV files work, including leading zeros in codes (`0123`).
+
 ### The invoice PDF
 
 The standard industrial GST tax invoice (A4, bordered):
@@ -156,7 +178,8 @@ The standard industrial GST tax invoice (A4, bordered):
 - **Dispatch:** Invoice, Challan and Order numbers and dates (left); LR, Transporter, E-way, Payment and Due on (right). Filled from *Transport & Consignee Details → Add dispatch / consignee details* on the invoice form.
 - **Parties:** Receiver/Buyer and Consignee/Ship To with place of supply and GSTIN.
 - **Items:** Sr, description, HSN, quantity, rate, unit, disc%, amount, with ruled columns down the page. Total quantity, sub total, discount, CGST/SGST/IGST by rate and round off sit inside the grid.
-- **Footer:** amount in words + grand total; bank details + declaration; numbered terms, Receiver's Sign., For company / Auth.Sign.
+- **Notes:** the Notes from the form print above the amount in words. On a quotation the valid-till sentence and the quotation note print first.
+- **Footer:** amount in words + grand total; bank details + declaration; *TERMS AND CONDITIONS* as bullets, Receiver's Sign., For company / Auth.Sign.
 
 Dates print as dd/mm/yyyy. **Long bills continue automatically:** each full page ends with "Continued on next page…", the column headings repeat, and totals and footer print once on the last page.
 
@@ -167,14 +190,14 @@ Dates print as dd/mm/yyyy. **Long bills continue automatically:** each full page
 | Section | What you can change |
 |---|---|
 | **Company details** | Company name, GSTIN, PAN, phone, email, logo, address, city, pincode, state, **bank name, branch, account number, IFSC**, terms. Saved changes apply to every invoice printed afterwards. *All companies* lists, adds and switches companies. |
-| **Invoice template** | *Invoice number format* (see below). Turn each part of the invoice on or off and rename its label; upload the logo; tagline lines; declaration; terms; reverse charge Yes/No. Live A4 preview on the right; tick *Preview a long bill* to see page 2. *Reset to default* restores the standard layout. Saved per company. |
+| **Invoice templates** | Two layouts: *Tax invoice template* and *Quotation template*, chosen with the switch at the top of the editor (each keeps its own changes, and unsaved changes ask before a switch). The quotation editor also has the *Quotation note* (default: *Prices are subject to change with market prices.*). *Invoice number format* (see below). Turn each part of the invoice on or off and rename its label; upload the logo; tagline lines; declaration; terms; reverse charge Yes/No. Live A4 preview on the right; tick *Preview a long bill* to see page 2. *Reset to default* restores the standard layout. Saved per company. |
 | **Low stock alert** | The company's default low-stock level, in units. An item with no threshold of its own uses it; an item's own threshold always wins. `0` (the starting value) turns the default off. The page shows the current value; negative numbers are refused. |
-| **Terms & Conditions** | One term per line; printed numbered (1., 2., 3.…) at the foot of every invoice. Same text as in Company details and the template editor. |
+| **Terms & Conditions** | One term per line; printed as bullets under a *TERMS AND CONDITIONS* heading at the foot of every invoice and quotation. Same text as in Company details and the template editor. |
 | **Backup & Restore** | *Extra backup folders*: up to 5 folders (one per line) that get a copy of every backup; *Save folders* tests that each can be written and makes a first copy. *Back up now* backs up to the backups folder and every extra folder. *Download a copy* saves one `.db` file wherever you choose. *Restore from file…* checks the file and saves the current books before replacing them. See [Keeping backups safe](#keeping-backups-safe-windows-crash-or-drive-reset). |
 | **Updates** | *Check for updates* (desktop app only; a browser shows a note instead of the button). It asks GitHub for the newest published release. If that release is newer than this version, it asks you to confirm, downloads the installer, installs it silently and restarts BillBharat. Your books are not changed: the server copies them to the backups folder first when a new version starts. This is the only time the app contacts the internet for updates. The portable exe cannot update itself. How releases are published: section 6, *Releasing an update*. |
 | **Reset (erase all books)** | *Reset all books…* asks for your **login password**, then deletes every company with its customers, items, invoices, purchases, payments, ledger, audit log, invoice templates, logo and uploaded bills. Kept: your login, the AI key and backup folders. A full backup `before_reset_<time>.db` is saved first, so *Restore from file…* undoes it. A wrong password erases nothing. |
 | **Gemini AI bill reader** | Optional. Paste a key from aistudio.google.com/app/apikey to let the AI read purchase bills. Stored encrypted on this PC. Without it, everything works by hand. |
-| **Product master names** | Names the AI reader maps supplier wording onto. |
+| **Product master names** | Names the AI reader maps supplier wording onto. Type one per line, or *Import names from CSV*: the column headed `name` (or `product`, `item`), else the first column. Names already listed, and names repeated in the file, are skipped and counted. |
 
 #### Invoice number format
 
@@ -199,6 +222,9 @@ The logo can be any image; it is stored as PNG so it always prints. Bank details
 |---|---|
 | `F8` | **Sales**: new sales invoice. |
 | `F9` | **Purchase**: new purchase bill. |
+| `F7` | **New customer**: opens the Customers page with the new-customer form open. |
+| `F6` | **New item**: opens the Inventory page with the new-item form open. |
+| `F4` | **AI purchase**: opens the AI purchase reader. |
 | `Alt+A` | Accept (save) the current form or open dialog |
 | `Alt+C` | Quick-create a customer, or an item when in an item grid |
 | `F2` | Jump to the date field |
@@ -207,7 +233,7 @@ The logo can be any image; it is stored as PNG so it always prints. Bank details
 | Item search | Type part of a name, SKU, barcode or HSN (`tmt12` finds "TMT Bar 12mm"), `↑`/`↓`, `Enter`. A scanned barcode is picked at once. |
 | `Esc` | Close the dialog, or go back |
 
-`F7` is not used (there are no manual journals). The legend is shown at the bottom of every screen.
+`F8`, `F9`, `F7`, `F6` and `F4` leave the current screen at once: an unsaved form is lost, so save first. `Alt+A` and `Alt+C` act on the screen you are on. The legend is shown at the bottom of every screen.
 
 ---
 
@@ -401,7 +427,7 @@ Building the `.exe` is described in [README.md](README.md#build-the-windows-exe)
 - **A new dependency used by the desktop shell** (`electron/`) must also be listed in `build.files` in `package.json`, with its runtime dependencies. The installer excludes `node_modules` by default. Version 1.0.1 crashed on start because this was missing. After any change, build with `npm run dist:dir` and check that `dist/win-unpacked/resources/app/node_modules/<package>` exists.
 - **Add the release notes.** For every release, add an entry to `WHATS_NEW` in `lib/whats-new.js` (a list of short sentences). The popup shows them after the update. A version without an entry shows a generic thank-you.
 - **Run the self-checks** before a release (each prints a pass line or throws):
-  `node scripts/test-payment-edit.mjs`, `node scripts/test-party-ledger-bills.mjs`, `node scripts/test-gst-payments.mjs`, `node scripts/test-sale-edit.mjs`, `node scripts/test-consumables.mjs`, `node scripts/test-back.mjs`, `node scripts/test-lump-sum.mjs`, `node scripts/test-low-stock.mjs`, `node scripts/test-whats-new.mjs`, and `npm run check`.
+  `node scripts/test-payment-edit.mjs`, `node scripts/test-party-ledger-bills.mjs`, `node scripts/test-gst-payments.mjs`, `node scripts/test-sale-edit.mjs`, `node scripts/test-consumables.mjs`, `node scripts/test-back.mjs`, `node scripts/test-lump-sum.mjs`, `node scripts/test-low-stock.mjs`, `node scripts/test-whats-new.mjs`, `node scripts/test-quotation.mjs`, `node scripts/test-inventory-import.mjs`, `node scripts/test-invoice-pdf.mjs`, and `npm run check`.
 
 ---
 
@@ -441,6 +467,37 @@ The Daily Book (cash book), the expense manager, the manual cash vouchers and th
 ---
 
 ## 10. Changes
+
+### Version 1.0.7
+
+**Added**
+
+- **Quotations** (QT): status *Draft / Sent / Accepted / Converted*, edit until converted, *Convert to invoice* (saved in one step with the quotation marked *Converted* and linked), *Open invoice*, *Valid till* printed as a note, *Preview quotation* before saving, its own template and note. Quotations take no stock, ledger, payment or sales total. Routes: `POST /api/sales/preview`; `convertFromId` on `POST /api/sales`; `?type=quotation` on `/api/settings/invoice-template`. Logic: `lib/sales.js` (`quoteStatusFor`, `checkQuoteStatus`, `quoteToConvert`, `markConverted`). Migration 5 adds `sales.convertedToId`.
+- **Delete** on an invoice or quotation page; the confirm box counts the payments that go with it. Deleting an invoice made from a quotation reopens the quotation.
+- **CSV import** of products (`POST /api/inventory/import`, `lib/inventory-import.js`) from *Inventory → Import CSV*, and of product names from *Settings → Product master names*. Skipped rows are listed with their line numbers.
+- **Keyboard:** `F7` new customer, `F6` new item, `F4` AI purchase reader.
+- **Invoice form:** *Preview* button; the document-type buttons stay visible and highlight the open type while editing.
+- **Settings:** *Tax invoice template* and *Quotation template* buttons.
+- **Self-checks:** `scripts/test-quotation.mjs`, `scripts/test-inventory-import.mjs`, `scripts/test-invoice-pdf.mjs`.
+
+**Changed**
+
+- The PDF prints the form's **Notes** (they were saved but never printed).
+- **Terms & Conditions** print under a heading as bullets.
+- Settings: the *Master list import* card was removed; the product import is on the Inventory page.
+- Dialog footers wrap instead of running out of the box. The *Record Payment* and *Close bill* buttons sit on one line in the payment card, and the Payment Method box is narrower.
+- Dashboard totals, the sales report and the sales export leave out quotations.
+
+**Fixed**
+
+- Excel-saved CSV files (with a hidden byte-order mark) and codes with leading zeros (`0123`) import correctly.
+- The invoice API (`PUT /api/sales/[id]`) refuses a status change on a quotation that is already converted.
+- Payments cannot be recorded against a quotation (`POST /api/sales/[id]/payments`).
+
+**Note for maintainers**
+
+- Known: a clean `next build` on Windows sometimes fails once with `Cannot find module for page: /api/...` during page-data collection; running the build again passes.
+- Known: deleting a customer that has invoices still succeeds and leaves those invoices without a customer (see the QA list). Deleting a product in use is not blocked either.
 
 ### Version 1.0.6
 

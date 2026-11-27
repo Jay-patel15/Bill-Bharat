@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Plus, Pencil, Trash2, FileText } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,6 +46,9 @@ export default function CustomersPage() {
   }
 
   useEffect(() => { load(); }, [active?.id]);
+  // F7 opens this page with ?new=<time>: show the new-customer form straight away.
+  const urlParams = useSearchParams();
+  useEffect(() => { if (urlParams.get("new")) { setForm(empty); setOpen(true); } }, [urlParams.get("new")]);
 
   if (!active) return <NoCompanySelected />;
 
@@ -92,10 +96,10 @@ export default function CustomersPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Customers & Builders Dashboard</h1>
-          <p className="text-sm text-muted-foreground">Track billing, payments, and investments per builder.</p>
+          <h1 className="text-2xl font-semibold">Customers Dashboard</h1>
+          <p className="text-sm text-muted-foreground">Track billing, payments, and investments per customer.</p>
         </div>
-        <Button onClick={() => { setForm(empty); setOpen(true); }}><Plus className="h-4 w-4 mr-1" /> New builder</Button>
+        <Button onClick={() => { setForm(empty); setOpen(true); }}><Plus className="h-4 w-4 mr-1" /> New customer</Button>
       </div>
 
       {/* Global Summary */}
@@ -121,7 +125,7 @@ export default function CustomersPage() {
       </div>
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
-        <h2 className="text-lg font-semibold text-foreground/80">Individual Builders ({filtered.length})</h2>
+        <h2 className="text-lg font-semibold text-foreground/80">Individual Customers ({filtered.length})</h2>
         <Input placeholder="Search name, phone, GSTIN…" value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs bg-background" />
       </div>
 

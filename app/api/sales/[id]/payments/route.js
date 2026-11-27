@@ -9,6 +9,7 @@ export async function POST(req, { params }) {
       const sale = await findById("sales", params.id);
       if (!sale) return fail("Sale not found", 404);
       await assertCompanyAccess(user, sale.companyId);
+      if (sale.documentType === "Quotation") return fail("A quotation takes no payments", 400);
 
       const body = await readBody(req);
       const amount = Number(body.amount);

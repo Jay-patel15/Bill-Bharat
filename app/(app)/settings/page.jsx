@@ -1,7 +1,8 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, Building2, FileText, KeyRound, RefreshCw, ScrollText, Tags, Trash2 } from "lucide-react";
+import * as XLSX from "xlsx";
+import { AlertTriangle, Building2, FileText, KeyRound, RefreshCw, ScrollText, Tags, Trash2, Upload } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
@@ -176,6 +177,7 @@ function ProductNames() {
   const [list, setList] = useState([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const fileRef = useRef(null);
 
   const load = () => api("/api/product-mappings").then((l) => setList(l || [])).catch(() => setList([]));
   useEffect(() => { load(); }, []);
@@ -201,12 +203,52 @@ function ProductNames() {
     } catch (err) { toast({ type: "error", title: "Failed", message: err.message }); }
   }
 
+  /** CSV of names: the column headed name/product/item, else the first column. Only names not already listed are added. */
+  async function importCsv(e) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // so choosing the same file again still fires
+    if (!file) return;
+    setBusy(true);
+    try {
+      const wb = XLSX.read(await file.text(), { type: "string" });
+      const grid = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "", raw: false });
+      const headers = ["name", "product", "productname", "item", "itemname"];
+      const head = (grid[0] || []).map((h) => String(h).replace(/^﻿/, "").trim().toLowerCase());
+      const named = head.findIndex((h) => headers.includes(h));
+      const body = named >= 0 ? grid.slice(1) : grid;
+      const names = body.map((r) => String(r[named >= 0 ? named : 0] ?? "").replace(/^﻿/, "").trim()).filter(Boolean);
+      if (names.length > 5000) return toast({ type: "error", title: "Too many names", message: "Import at most 5000 names at a time." });
+
+      const known = new Set(list.map((m) => String(m.realName || "").trim().toLowerCase()));
+      const items = [];
+      for (const n of names) {
+        const key = n.toLowerCase();
+        if (known.has(key)) continue;
+        known.add(key);
+        items.push(n);
+      }
+      if (items.length === 0) return toast({ type: "info", title: "No new names", message: `All ${names.length} name(s) in the file are already listed or repeated.` });
+      await api("/api/product-mappings", { method: "POST", body: JSON.stringify({ items }) });
+      const skipped = names.length - items.length;
+      toast({ type: "success", title: `${items.length} name(s) added`, message: skipped ? `${skipped} already listed or repeated, skipped.` : undefined });
+      await load();
+    } catch (err) {
+      toast({ type: "error", title: "Import failed", message: err.message });
+    } finally { setBusy(false); }
+  }
+
   return (
-    <Section icon={Tags} title="Product master names" hint="One name per line. The AI reader matches supplier item names to these.">
+    <Section icon={Tags} title="Product master names" hint="One name per line, or import a CSV with a name column. The AI reader matches supplier item names to these.">
       <form onSubmit={add} className="space-y-2">
         <Textarea rows={3} placeholder={"TMT Bar 12mm\nCement OPC 53"} value={text} onChange={(e) => setText(e.target.value)} />
-        <Button type="submit" size="sm" disabled={busy || !text.trim()}>{busy ? "Adding…" : "Add names"}</Button>
+        <div className="flex flex-wrap gap-2">
+          <Button type="submit" size="sm" disabled={busy || !text.trim()}>{busy ? "Adding…" : "Add names"}</Button>
+          <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => fileRef.current?.click()}>
+            <Upload className="h-3.5 w-3.5 mr-1" /> Import names from CSV
+          </Button>
+        </div>
       </form>
+      <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={importCsv} />
       {list.length > 0 && (
         <ul className="max-h-64 overflow-auto divide-y rounded border text-sm">
           {list.map((m) => (
@@ -283,8 +325,11 @@ export default function SettingsPage() {
             <Link href="/companies"><Button size="sm" variant="outline">All companies</Button></Link>
           </div>
         </Section>
-        <Section icon={FileText} title="Invoice template" hint="Choose what the GST invoice shows and what each part is called. Live preview.">
-          <Link href="/settings/invoice-template"><Button size="sm" variant="outline">Edit invoice template</Button></Link>
+        <Section icon={FileText} title="Invoice templates" hint="Choose what each document shows and what each part is called. Each has its own live preview.">
+          <div className="flex flex-wrap gap-2">
+            <Link href="/settings/invoice-template?type=invoice"><Button size="sm" variant="outline">Tax invoice template</Button></Link>
+            <Link href="/settings/invoice-template?type=quotation"><Button size="sm" variant="outline">Quotation template</Button></Link>
+          </div>
         </Section>
         <LowStockCard />
         <TermsEditor />

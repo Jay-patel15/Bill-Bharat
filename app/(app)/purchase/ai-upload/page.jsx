@@ -279,7 +279,7 @@ export default function AiUploadPage() {
 
             {/* Top fields */}
             <div className="mb-4">
-              <Field label="BILLED TO (CUSTOMER / BUILDER)">
+              <Field label="BILLED TO (CUSTOMER)">
                 <Select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
                   <option value="">-- None (Company Expense) --</option>
                   {customers.map((c) => (

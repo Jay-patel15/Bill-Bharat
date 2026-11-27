@@ -10,7 +10,7 @@ import { cn, fuzzyScore, formatINR } from "@/lib/utils";
  * Free text is kept as the item name, so non-stock items still work.
  * The box grows with the text so long product names stay fully visible.
  */
-export function ItemSearch({ value, items, onText, onPick, placeholder = "Search item, SKU or barcode" }) {
+export function ItemSearch({ value, items, onText, onPick, onBlur, placeholder = "Search item, SKU or barcode" }) {
   const [open, setOpen] = useState(false);
   const [hi, setHi] = useState(0);
 
@@ -53,7 +53,7 @@ export function ItemSearch({ value, items, onText, onPick, placeholder = "Search
         aria-autocomplete="list"
         onChange={(e) => { onText(e.target.value.replace(/\s*\n\s*/g, " ")); setOpen(true); setHi(0); }}
         onKeyDown={onKeyDown}
-        onBlur={() => setTimeout(() => setOpen(false), 120)}
+        onBlur={() => { setTimeout(() => setOpen(false), 120); onBlur?.(); }}
       />
       {open && matches.length > 0 && (
         <ul role="listbox" className="absolute z-20 mt-1 w-full max-h-64 overflow-auto rounded-md border bg-background shadow-lg text-sm">

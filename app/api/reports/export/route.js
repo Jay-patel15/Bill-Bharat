@@ -21,6 +21,8 @@ export async function GET(req) {
       await assertCompanyAccess(user, companyId);
       let rows = await findWhere(cfg.table, { companyId });
       if (type === "customers") rows = await withDues(companyId, rows);
+      // Quotations carry no money owed or earned: keep their amounts out of the sales export.
+      if (type === "sales") rows = rows.filter((r) => r.documentType !== "Quotation");
 
       const flatRows = rows.map((r) => {
         const o = { ...r };

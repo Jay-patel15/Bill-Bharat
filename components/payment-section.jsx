@@ -152,41 +152,45 @@ export function PaymentSection({ total, payments = [], onRecord, onUpdate, onDel
             Fully paid. To change it, edit or delete a payment below.
           </p>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <Field label={editing ? "Amount (₹)" : "Amount received now (₹)"}>
-              <Input id="pay-amount" type="number" min="0" step="0.01"
-                placeholder={editing ? "" : `Max ${formatINR(st.room)}`}
-                value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
-            </Field>
-            <Field label="Payment Method">
-              <Select value={form.method} onChange={(e) => setForm({ ...form, method: e.target.value, ref: "" })}>
-                {METHODS.map((m) => <option key={m}>{m}</option>)}
-              </Select>
-            </Field>
-            {refField && (
-              <Field label={form.method === "Cheque" ? "Cheque Number" : form.method === "UPI" ? "UPI Transaction ID" : "Transaction ID (NEFT/RTGS)"}>
-                <Input value={form.ref} onChange={(e) => setForm({ ...form, ref: e.target.value })}
-                  placeholder={form.method === "Cheque" ? "e.g. 004521" : form.method === "UPI" ? "e.g. UPI/123456789" : "e.g. NEFT123456789"} />
+          <div className="flex items-end gap-3">
+            <div className="min-w-0 flex-1">
+              <Field label={editing ? "Amount (₹)" : "Amount received now (₹)"}>
+                <Input id="pay-amount" type="number" min="0" step="0.01"
+                  placeholder={editing ? "" : `Max ${formatINR(st.room)}`}
+                  value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
               </Field>
+            </div>
+            <div className="w-36 shrink-0">
+              <Field label="Payment Method">
+                <Select value={form.method} onChange={(e) => setForm({ ...form, method: e.target.value, ref: "" })}>
+                  {METHODS.map((m) => <option key={m}>{m}</option>)}
+                </Select>
+              </Field>
+            </div>
+            {refField && (
+              <div className="min-w-0 flex-1">
+                <Field label={form.method === "Cheque" ? "Cheque Number" : form.method === "UPI" ? "UPI Transaction ID" : "Transaction ID (NEFT/RTGS)"}>
+                  <Input value={form.ref} onChange={(e) => setForm({ ...form, ref: e.target.value })}
+                    placeholder={form.method === "Cheque" ? "e.g. 004521" : form.method === "UPI" ? "e.g. UPI/123456789" : "e.g. NEFT123456789"} />
+                </Field>
+              </div>
             )}
             {editing && (
-              <div className="md:col-span-2">
+              <div className="min-w-0 flex-1">
                 <Field label="Notes">
                   <Input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
                 </Field>
               </div>
             )}
-            <div className="flex items-end gap-2 md:col-span-2 lg:col-span-1">
-              <Button onClick={() => save()} disabled={saving || over > 0} className="flex-1">
-                {saving ? "Saving…" : editing ? "Save Payment Changes" : "Record Payment"}
+            <Button onClick={() => save()} disabled={saving || over > 0} className="shrink-0 whitespace-nowrap">
+              {saving ? "Saving…" : editing ? "Save Payment Changes" : "Record Payment"}
+            </Button>
+            {canCloseBill && !editing && (
+              <Button variant="outline" onClick={closeBill} disabled={saving || st.pending <= 0}
+                className="shrink-0 whitespace-nowrap border-emerald-500 text-emerald-600 hover:bg-emerald-50">
+                Close bill
               </Button>
-              {canCloseBill && !editing && (
-                <Button variant="outline" onClick={closeBill} disabled={saving || st.pending <= 0}
-                  className="border-emerald-500 text-emerald-600 hover:bg-emerald-50">
-                  Close bill
-                </Button>
-              )}
-            </div>
+            )}
           </div>
         )}
 

@@ -26,7 +26,7 @@ export function QuickCreate() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    const show = (e) => { const k = e.detail?.kind || "customer"; setKind(k); setForm(BLANK[k]); setError(""); setOpen(true); };
+    const show = (e) => { const k = e.detail?.kind || "customer"; setKind(k); setForm({ ...BLANK[k], ...e.detail?.prefill }); setError(""); setOpen(true); };
     window.addEventListener(OPEN_QUICK_CREATE, show);
     return () => window.removeEventListener(OPEN_QUICK_CREATE, show);
   }, []);

@@ -1,16 +1,17 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Mail, Pencil, Printer, Share2 } from "lucide-react";
+import { FileText, Mail, Pencil, Printer, Share2, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/input";
 import { PaymentSection } from "@/components/payment-section";
 import { PdfPreview } from "@/components/pdf-preview";
 import { StatusBadge } from "@/components/ui/badge";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { api, useCompany } from "@/components/company-context";
 import { useToast } from "@/components/ui/toast";
-import { formatINR, formatDate, getDocumentType } from "@/lib/utils";
+import { formatINR, formatDate, getDocumentType, QUOTE_STATUSES } from "@/lib/utils";
 import { isGstCompany } from "@/lib/gst";
 import { navReplace } from "@/components/back-handler";
 
@@ -21,7 +22,8 @@ function invoiceMessage({ sale, partyName, companyName }) {
   const [y, m, d] = String(sale.invoiceDate || "").slice(0, 10).split("-");
   const date = d && m && y ? `${d}-${MONTHS[Number(m) - 1]}-${y.slice(2)}` : "";
   const amount = Number(sale.total || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return `Dear ${partyName}, your invoice generated on ${date}, Invoice No ${sale.invoiceNumber}, Amount ${amount} Dr, ${companyName}, Regards.`;
+  const isQuote = sale.documentType === "Quotation";
+  return `Dear ${partyName}, your ${isQuote ? "quotation" : "invoice"} generated on ${date}, ${isQuote ? "Quotation" : "Invoice"} No ${sale.invoiceNumber}, Amount ${amount} Dr, ${companyName}, Regards.`;
 }
 
 /** WhatsApp needs the country code; a bare 10-digit Indian mobile number gets 91. */
@@ -83,8 +85,10 @@ export default function SaleDetailPage({ params }) {
 
   const interstate = sale.supplierStateCode && sale.recipientStateCode && sale.supplierStateCode !== sale.recipientStateCode;
   // Only unpaid invoices can be edited (a document that takes payments and has money against it is locked).
-  const canEdit = !(getDocumentType(sale.documentType).affectsOutstanding && Number(sale.amountPaid) > 0);
-  
+  const isQuote = sale.documentType === "Quotation";
+  // A converted quotation is locked: its invoice is the document to change now.
+  const canEdit = !(getDocumentType(sale.documentType).affectsOutstanding && Number(sale.amountPaid) > 0) && sale.status !== "Converted";
+
   const totalPaid = (payments || []).reduce((sum, p) => sum + Number(p.amount || 0), 0);
   // Payment callbacks for the shared PaymentSection; each reloads the invoice afterwards.
   async function recordPayment(d) {
@@ -100,6 +104,31 @@ export default function SaleDetailPage({ params }) {
   async function deletePayment(id) {
     await api(`/api/payments/${id}`, { method: "DELETE" });
     await load();
+  }
+
+  /** Deletes the document. Its stock goes back, its ledger lines and any payments on it are removed. */
+  async function deleteDocument() {
+    const paidNote = payments.length
+      ? `\n\nIts ${payments.length} payment(s) totalling ${formatINR(totalPaid)} are deleted too.`
+      : "";
+    if (!confirm(`Delete ${sale.documentType || "document"} ${sale.invoiceNumber}?${paidNote}\n\nThis cannot be undone.`)) return;
+    try {
+      await api(`/api/sales/${sale.id}`, { method: "DELETE" });
+      toast({ type: "success", title: `${sale.documentType || "Document"} deleted`, message: sale.invoiceNumber });
+      navReplace(router, "/sales");
+    } catch (e) {
+      toast({ type: "error", title: "Could not delete", message: e.message });
+    }
+  }
+
+  /** Quotation status set by hand (Draft, Sent, Accepted). */
+  async function setQuoteStatus(status) {
+    try {
+      await api(`/api/sales/${sale.id}`, { method: "PUT", body: JSON.stringify({ status }) });
+      await load();
+    } catch (e) {
+      toast({ type: "error", title: "Could not change status", message: e.message });
+    }
   }
 
   /** Opens the print preview; the user prints it or saves it where they choose. */
@@ -122,7 +151,7 @@ export default function SaleDetailPage({ params }) {
       return toast({ type: "error", title: "Could not get the PDF", message: e.message });
     }
 
-    const subject = `Invoice No ${sale.invoiceNumber}`;
+    const subject = `${isQuote ? "Quotation" : "Invoice"} No ${sale.invoiceNumber}`;
     const body = invoiceMessage({ sale, partyName: customer?.name || "Customer", companyName: active?.name || "" });
 
     // The desktop app cannot attach a file to a WhatsApp link. It saves the PDF, copies it to the
@@ -185,9 +214,20 @@ export default function SaleDetailPage({ params }) {
               <Pencil className="h-4 w-4" /> Edit
             </Button>
           )}
+          {isQuote && sale.status !== "Converted" && (
+            <Button onClick={() => router.push(`/sales/create-invoice?convertFrom=${sale.id}`)} title="Make a Tax Invoice from this quotation">
+              <FileText className="h-4 w-4" /> Convert to invoice
+            </Button>
+          )}
+          {isQuote && sale.convertedToId && (
+            <Button variant="outline" onClick={() => router.push(`/sales/${sale.convertedToId}`)}>Open invoice</Button>
+          )}
           <Button variant="outline" onClick={printInvoice} title="Print preview (Ctrl+P); save the PDF where you choose"><Printer className="h-4 w-4" /> Print / Save PDF</Button>
           <Button variant="outline" onClick={() => sharePdf("whatsapp")} title="Send the invoice PDF on WhatsApp"><Share2 className="h-4 w-4" /> WhatsApp</Button>
           <Button variant="outline" onClick={() => sharePdf("email")} title="Send the invoice PDF by email"><Mail className="h-4 w-4" /> Email</Button>
+          <Button variant="outline" onClick={deleteDocument} title="Delete this document" className="border-destructive text-destructive hover:bg-destructive/10">
+            <Trash2 className="h-4 w-4" /> Delete
+          </Button>
         </div>
       </div>
 
@@ -230,21 +270,27 @@ export default function SaleDetailPage({ params }) {
             {Number(sale.discount) ? <Row label="Discount" value={"- " + formatINR(sale.discount)} /> : null}
             <div className="border-t pt-2">
               <Row label={<strong>Grand total</strong>} value={<strong>{formatINR(sale.total)}</strong>} />
-              <Row label="Paid" value={formatINR(totalPaid)} />
-              <Row label="Status" value={<StatusBadge status={sale.status} />} />
+              {!isQuote && <Row label="Paid" value={formatINR(totalPaid)} />}
+              <Row label="Status" value={isQuote && sale.status !== "Converted" ? (
+                <Select value={sale.status} onChange={(e) => setQuoteStatus(e.target.value)} className="h-8 w-36 py-1">
+                  {QUOTE_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                </Select>
+              ) : <StatusBadge status={sale.status} />} />
             </div>
           </CardContent>
         </Card>
       </div>
 
-      <PaymentSection
-        total={sale.total}
-        payments={payments}
-        startEditId={openPaymentId}
-        onRecord={recordPayment}
-        onUpdate={updatePayment}
-        onDelete={deletePayment}
-      />
+      {!isQuote && (
+        <PaymentSection
+          total={sale.total}
+          payments={payments}
+          startEditId={openPaymentId}
+          onRecord={recordPayment}
+          onUpdate={updatePayment}
+          onDelete={deletePayment}
+        />
+      )}
 
       <PdfPreview src={preview?.src} fileName={preview?.name} onClose={() => setPreview(null)} />
     </div>

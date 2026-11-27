@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Select, Textarea } from "@/components/ui/input";
@@ -65,12 +66,27 @@ export default function InvoiceTemplatePage() {
   const [busy, setBusy] = useState(false);
   const [terms, setTerms] = useState("");
   const [long, setLong] = useState(false);
+  // Which saved style is open: the tax invoice or the quotation. Each has its own layout.
+  // Opened from the Settings link for one document: that style is shown first.
+  const search = useSearchParams();
+  const [docKind, setDocKind] = useState(search.get("type") === "quotation" ? "quotation" : "invoice");
+  const [dirty, setDirty] = useState(false); // unsaved edits in this style
+  const tplUrl = docKind === "quotation" ? "/api/settings/invoice-template?type=quotation" : "/api/settings/invoice-template";
 
   useEffect(() => {
     if (!active?.id) return;
-    api("/api/settings/invoice-template").then((r) => { setTpl(r.template); setCustom(r.custom); }).catch((e) => toast({ type: "error", title: e.message }));
-    loadLogo(active.logoUrl).then(setLogo);
-  }, [active?.id, active?.logoUrl]);
+    setTpl(null);
+    setDirty(false);
+    api(tplUrl).then((r) => { setTpl(r.template); setCustom(r.custom); }).catch((e) => toast({ type: "error", title: e.message }));
+  }, [active?.id, tplUrl]);
+
+  useEffect(() => { if (active?.id) loadLogo(active.logoUrl).then(setLogo); }, [active?.id, active?.logoUrl]);
+
+  function switchKind(k) {
+    if (k === docKind) return;
+    if (dirty && !confirm("Discard the changes you have not saved?")) return;
+    setDocKind(k);
+  }
 
   useEffect(() => { setTerms(active?.termsAndConditions || ""); }, [active?.id, active?.termsAndConditions]);
 
@@ -82,43 +98,50 @@ export default function InvoiceTemplatePage() {
   useEffect(() => {
     if (!tpl || !active) return;
     let url = "";
+    const isQuote = docKind === "quotation";
     const t = setTimeout(() => {
       const blob = generateInvoicePdf({ company, customer: SAMPLE_CUSTOMER, template: tpl, logo, output: "blob",
-        invoice: { ...invoice, invoiceNumber: nextInvoiceNumber([], "INV", tpl.text.numberFormat, invoice.invoiceDate) } });
+        title: isQuote ? "QUOTATION" : "TAX INVOICE",
+        invoice: {
+          ...invoice,
+          metadata: isQuote ? { ...SAMPLE_META, validTill: "2026-11-29" } : SAMPLE_META,
+          invoiceNumber: nextInvoiceNumber([], isQuote ? "QT" : "INV", tpl.text.numberFormat, invoice.invoiceDate)
+        } });
       url = URL.createObjectURL(blob);
       setPreview(url);
     }, 300);
     return () => { clearTimeout(t); if (url) URL.revokeObjectURL(url); };
-  }, [tpl, logo, company, invoice]);
+  }, [tpl, logo, company, invoice, docKind]);
 
   if (!active) return <NoCompanySelected />;
   if (!tpl) return <p className="text-sm text-muted-foreground">Loading…</p>;
 
-  const setShow = (k, v) => setTpl({ ...tpl, show: { ...tpl.show, [k]: v } });
-  const setLabel = (k, v) => setTpl({ ...tpl, labels: { ...tpl.labels, [k]: v } });
-  const setText = (k, v) => setTpl({ ...tpl, text: { ...tpl.text, [k]: v } });
+  const setShow = (k, v) => { setDirty(true); setTpl({ ...tpl, show: { ...tpl.show, [k]: v } }); };
+  const setLabel = (k, v) => { setDirty(true); setTpl({ ...tpl, labels: { ...tpl.labels, [k]: v } }); };
+  const setText = (k, v) => { setDirty(true); setTpl({ ...tpl, text: { ...tpl.text, [k]: v } }); };
+  const setTermsDirty = (v) => { setDirty(true); setTerms(v); };
 
   async function save(e) {
     e?.preventDefault();
     setBusy(true);
     try {
-      const r = await api("/api/settings/invoice-template", { method: "PUT", body: JSON.stringify({ template: tpl }) });
-      setTpl(r.template); setCustom(true);
+      const r = await api(tplUrl, { method: "PUT", body: JSON.stringify({ template: tpl }) });
+      setTpl(r.template); setCustom(true); setDirty(false);
       if (terms.trim() !== (active.termsAndConditions || "").trim()) {
         await api(`/api/companies/${active.id}`, { method: "PUT", body: JSON.stringify({ termsAndConditions: terms.trim() }) });
         await refresh();
       }
-      toast({ type: "success", title: "Invoice template saved" });
+      toast({ type: "success", title: docKind === "quotation" ? "Quotation template saved" : "Invoice template saved" });
     } catch (err) { toast({ type: "error", title: "Could not save", message: err.message }); }
     finally { setBusy(false); }
   }
 
   async function reset() {
-    if (!confirm("Reset the invoice template to the default layout?")) return;
+    if (!confirm(`Reset the ${docKind === "quotation" ? "quotation" : "invoice"} template to the default layout?`)) return;
     setBusy(true);
     try {
-      const r = await api("/api/settings/invoice-template", { method: "DELETE" });
-      setTpl(r.template); setCustom(false);
+      const r = await api(tplUrl, { method: "DELETE" });
+      setTpl(r.template); setCustom(false); setDirty(false);
     } catch (err) { toast({ type: "error", title: err.message }); }
     finally { setBusy(false); }
   }
@@ -162,8 +185,13 @@ export default function InvoiceTemplatePage() {
         <label className="block text-xs space-y-1"><span>Declaration text</span>
           <Textarea rows={2} maxLength={600} value={tpl.text.declaration} onChange={(e) => setText("declaration", e.target.value)} />
         </label>
+        {docKind === "quotation" && (
+          <label className="block text-xs space-y-1"><span>Quotation note under the items (printed on every quotation)</span>
+            <Textarea rows={2} maxLength={300} value={tpl.text.quoteNote} onChange={(e) => setText("quoteNote", e.target.value)} />
+          </label>
+        )}
         <label className="block text-xs space-y-1"><span>Terms &amp; conditions, one per line (numbered automatically). Same as Settings → Terms &amp; Conditions.</span>
-          <Textarea rows={4} maxLength={1500} value={terms} onChange={(e) => setTerms(e.target.value)} />
+          <Textarea rows={4} maxLength={1500} value={terms} onChange={(e) => setTermsDirty(e.target.value)} />
         </label>
         <p className="text-xs text-muted-foreground">
           Bank printed: {bank || <b className="text-destructive">none set</b>}.{" "}
@@ -178,8 +206,13 @@ export default function InvoiceTemplatePage() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <div>
-            <h1 className="text-xl font-semibold">Invoice template</h1>
-            <p className="text-xs text-muted-foreground">{custom ? "Custom layout for " : "Default layout for "}{active.name}. Applies to every invoice PDF of this company.</p>
+            <h1 className="text-xl font-semibold">{docKind === "quotation" ? "Quotation template" : "Invoice template"}</h1>
+            <p className="text-xs text-muted-foreground">{custom ? "Custom layout for " : "Default layout for "}{active.name}. Applies to every {docKind === "quotation" ? "quotation" : "invoice"} PDF of this company.</p>
+          </div>
+          <div className="flex gap-1">
+            {[["invoice", "Tax invoice"], ["quotation", "Quotation"]].map(([k, label]) => (
+              <Button key={k} size="sm" variant={docKind === k ? "default" : "outline"} onClick={() => switchKind(k)}>{label}</Button>
+            ))}
           </div>
         </div>
         <div className="flex gap-2">

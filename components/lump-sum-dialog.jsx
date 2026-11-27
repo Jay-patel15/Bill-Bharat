@@ -68,7 +68,7 @@ export function LumpSumDialog({ open, onClose, title, verb, bills, onSubmit }) {
           The amount clears the oldest bill first, then the next, until it runs out.
         </p>
 
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-[1fr_11rem]">
           <Field label="Amount (₹)">
             <Input type="number" min="0" step="0.01" autoFocus value={amount}
               placeholder={`Up to ${formatINR(total)}`} onChange={(e) => setAmount(e.target.value)} />

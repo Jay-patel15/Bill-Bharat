@@ -1,9 +1,9 @@
 import { fail, ok, readBody, withUser } from "@/lib/api";
-import { assertCompanyAccess, findById, findWhere, remove, update, transaction } from "@/lib/db";
+import { assertCompanyAccess, findById, findOne, findWhere, remove, update, transaction } from "@/lib/db";
 import { removeDocumentEntries } from "@/lib/accounting";
 import { getDocumentType } from "@/lib/utils";
 import { moveStock } from "@/lib/consumables";
-import { editSale } from "@/lib/sales";
+import { checkQuoteStatus, editSale } from "@/lib/sales";
 
 async function loadSale(user, id) {
   const s = await findById("sales", id);
@@ -32,6 +32,7 @@ export async function PUT(req, { params }) {
       const patch = {};
       for (const k of ["status", "notes", "dueDate", "pdfUrl"]) if (body[k] !== undefined) patch[k] = body[k];
       if (patch.dueDate !== undefined) patch.dueDate = patch.dueDate || null;
+      if (patch.status !== undefined && sale.documentType === "Quotation") patch.status = checkQuoteStatus(sale, patch.status);
 
       const updated = await transaction(async () => {
         // Payments are recorded and edited through /api/sales/[id]/payments and /api/payments/[id] only.
@@ -48,6 +49,9 @@ export async function DELETE(_req, { params }) {
       const sale = await loadSale(user, params.id);
       await transaction(async () => {
         if (getDocumentType(sale.documentType).affectsStock) await moveStock(sale.companyId, sale.items, 1, user.id);
+        // An invoice made from a quotation: the quotation is open again, not pointing at a deleted invoice.
+        const quote = await findOne("sales", { companyId: sale.companyId, convertedToId: sale.id });
+        if (quote) await update("sales", quote.id, { status: "Accepted", convertedToId: null }, user.id);
         await removeDocumentEntries("SALE", sale.id);
         await remove("sales", sale.id, user.id);
       });

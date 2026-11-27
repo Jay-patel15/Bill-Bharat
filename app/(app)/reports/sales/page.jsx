@@ -21,6 +21,7 @@ export default function SalesReportPage() {
   }, [active?.id]);
 
   const filtered = useMemo(() => list.filter((s) => {
+    if (s.documentType === "Quotation") return false; // quotations are not sales
     if (from && s.invoiceDate < from) return false;
     if (to && s.invoiceDate > to) return false;
     return true;

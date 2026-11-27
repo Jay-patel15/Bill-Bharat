@@ -81,7 +81,7 @@ export function PurchaseForm({ initial = {}, onSubmit, submitLabel = "Save purch
       <Card>
         <CardHeader><CardTitle>Supplier & bill</CardTitle></CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
-          <Field label="Billed To (Customer / Builder)">
+          <Field label="Billed To (Customer)">
             <Select value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
               <option value="">-- None (Company Expense) --</option>
               {customers.map((c) => (

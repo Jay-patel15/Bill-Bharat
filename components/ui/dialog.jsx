@@ -26,7 +26,7 @@ export function Dialog({ open, onClose, title, children, footer, size = "md" }) 
           </div>
         ) : null}
         <div className="overflow-auto p-5 flex-1">{children}</div>
-        {footer ? <div className="border-t px-5 py-3 flex justify-end gap-2">{footer}</div> : null}
+        {footer ? <div className="border-t px-5 py-3 flex flex-wrap justify-end gap-2">{footer}</div> : null}
       </div>
     </div>
   );

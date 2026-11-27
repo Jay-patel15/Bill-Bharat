@@ -245,7 +245,9 @@ await check("a reused $n placeholder binds the same value", async () => {
 
 await check("migrations are recorded once", async () => {
   const rows = await query("SELECT version FROM _schema_migrations ORDER BY version");
-  assert.deepEqual(rows.map((r) => r.version), [1, 2, 3, 4]);
+  // Every migration in the schema file must have run once, in order (no hardcoded list to update).
+  const { MIGRATIONS } = await import(pathToFileURL(path.join(stagedLib, "db", "schema.js")).href);
+  assert.deepEqual(rows.map((r) => r.version), MIGRATIONS.map((m) => m.version));
 });
 
 const { closeDb, snapshot, restoreFrom } = await import(pathToFileURL(path.join(stagedLib, "db", "sqlite.js")).href);
